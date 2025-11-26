@@ -155,6 +155,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
               scale={'linear'}
               domain={useLogScale ? ['dataMin', 'dataMax'] : ['auto', 'auto']}
               name={xAxis || 'seed'}
+              allowDecimals={!processedData.every((d) => Number.isInteger(d.x))}
             />
             <YAxis
               scale={useLogScale ? 'log' : 'linear'}

@@ -86,32 +86,36 @@ export function useChartDataset(
       return dataPoint;
     });
 
-    // 2-2) x 軸が seed 以外の場合だけ 20 分割で集約してノイズ低減
+    // 2-2) x 軸が seed 以外の場合だけ集約
     const aggEnabled = xAxis.trim() !== '' && xAxis.trim().toLowerCase() !== 'seed';
 
     let processed: ScoreGraphPoint[] = chartData.map((d) => ({ ...d }) as ScoreGraphPoint);
     if (aggEnabled) {
-      const numGroups = 20;
-      const sorted = [...chartData].sort((a, b) => a.x - b.x);
-      const base = Math.floor(sorted.length / numGroups);
-      const rest = sorted.length % numGroups;
-      let idx = 0;
+      // X値でグループ化
+      const groups = new Map<number, ScoreGraphPoint[]>();
+      chartData.forEach((d) => {
+        const key = d.x;
+        if (!groups.has(key)) {
+          groups.set(key, []);
+        }
+        groups.get(key)?.push(d);
+      });
+
       const agg: ScoreGraphPoint[] = [];
+      // X値の昇順で処理
+      const sortedKeys = Array.from(groups.keys()).sort((a, b) => a - b);
 
-      for (let i = 0; i < numGroups; i++) {
-        const size = base + (i < rest ? 1 : 0);
-        if (size === 0) continue;
-        const group = sorted.slice(idx, idx + size);
-        idx += size;
+      sortedKeys.forEach((key) => {
+        const group = groups.get(key)!;
 
-        //  グループ代表点（平均値）を作成
+        // グループ代表点を作成
         const entry: ScoreGraphPoint = {
-          x: group.reduce((s: number, d: ScoreGraphPoint) => s + d.x, 0) / group.length,
+          x: key, // X値はそのまま使用（平均しない）
           seeds: group.flatMap((d) => d.seeds),
           count: group.length,
         };
 
-        //  グループ内平均スコアを計算
+        // グループ内平均スコアを計算
         selectedExecutionIds.forEach((execId) => {
           const execName =
             executions.find((e) => e.id === execId)?.comment || execId.substring(0, 8);
@@ -128,7 +132,8 @@ export function useChartDataset(
         });
 
         agg.push(entry);
-      }
+      });
+
       processed = agg;
     } else {
       processed = processed
