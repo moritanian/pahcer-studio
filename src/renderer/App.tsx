@@ -225,6 +225,7 @@ function App() {
         <WorkspaceSelector
           open={isSelectorOpen || !currentWorkspace}
           onSelect={handleWorkspaceSelect}
+          onClose={currentWorkspace ? () => setIsSelectorOpen(false) : undefined}
           currentPath={currentWorkspace?.targetDirectory}
         />
       </Box>

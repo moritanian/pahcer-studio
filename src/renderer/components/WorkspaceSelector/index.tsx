@@ -25,10 +25,16 @@ import type { AppSettings, WorkspaceHistory } from '../../../services/WorkspaceS
 interface WorkspaceSelectorProps {
   open: boolean;
   onSelect: (path: string, useWsl: boolean) => void;
+  onClose?: () => void;
   currentPath?: string;
 }
 
-const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({ open, onSelect, currentPath }) => {
+const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
+  open,
+  onSelect,
+  onClose,
+  currentPath,
+}) => {
   const [history, setHistory] = useState<WorkspaceHistory[]>([]);
   const [manualPath, setManualPath] = useState('');
   const [manualUseWsl, setManualUseWsl] = useState(false);
@@ -113,8 +119,8 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({ open, onSelect, c
   };
 
   return (
-    <Dialog open={open} maxWidth="md" fullWidth disableEscapeKeyDown>
-      <DialogTitle>ワークスペースの選択</DialogTitle>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth disableEscapeKeyDown={!onClose}>
+      <DialogTitle>ワークスペースを選択</DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 4 }}>
           <Typography variant="subtitle2" color="textSecondary" gutterBottom>
