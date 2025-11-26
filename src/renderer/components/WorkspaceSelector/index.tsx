@@ -101,11 +101,19 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
     saveHistory(newHistory);
   };
 
+  // WSLパスかどうかを判定するヘルパー関数
+  const isWslPath = (path: string): boolean => {
+    return path.startsWith('\\\\wsl$\\') || path.startsWith('\\\\wsl.localhost\\');
+  };
+
   const handleBrowse = async () => {
     try {
       const path = await window.electronAPI.dialog.openDirectory();
       if (path) {
         setManualPath(path);
+        if (isWslPath(path)) {
+          setManualUseWsl(true);
+        }
       }
     } catch (error) {
       console.error('Failed to open directory dialog:', error);
@@ -131,7 +139,14 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
               fullWidth
               label="パスを入力"
               value={manualPath}
-              onChange={(e) => setManualPath(e.target.value)}
+              onChange={(e) => {
+                const path = e.target.value;
+                setManualPath(path);
+                // WSLパスの自動検出
+                if (isWslPath(path)) {
+                  setManualUseWsl(true);
+                }
+              }}
               placeholder="C:\Projects\MyProject または ~/projects/my-project"
               size="small"
             />
