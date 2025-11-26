@@ -1,5 +1,4 @@
-import type React from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   AppBar,
   Box,
@@ -9,11 +8,17 @@ import {
   Typography,
   ThemeProvider,
   createTheme,
+  Button,
+  Tooltip,
 } from '@mui/material';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import './styles/App.css';
 import TestExecutionForm from './components/TestExecutionForm';
 import TestExecutionList from './components/TestExecutionList';
 import ScoreAnalysis from './components/ScoreAnalysis';
+import WorkspaceSelector from './components/WorkspaceSelector';
+import type { AppSettings } from '../services/WorkspaceService';
+import type { Workspace } from '../schemas/execution';
 
 // タブパネルのインターフェース
 interface TabPanelProps {
@@ -94,9 +99,55 @@ function App() {
   // 現在選択されているタブのインデックス
   const [tabIndex, setTabIndex] = useState(0);
 
+  // ワークスペースの状態
+  const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
+  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+
+  // 初期化時に設定（履歴）を読み込む
+  useEffect(() => {
+    const initWorkspace = async () => {
+      try {
+        const settings = (await window.electronAPI.settings.get()) as AppSettings;
+        const history = settings.projects;
+        if (history && history.length > 0) {
+          // 最新の履歴（最初の要素）を選択
+          const latest = history[0];
+          setCurrentWorkspace({ targetDirectory: latest.path, useWsl: latest.useWsl });
+
+          // バックエンドにワークスペースを設定
+          await window.electronAPI.workspace.set({
+            targetDirectory: latest.path,
+            useWsl: latest.useWsl,
+          });
+        } else {
+          // 履歴がない場合はセレクターを開く
+          setIsSelectorOpen(true);
+        }
+      } catch (error) {
+        console.error('Failed to load settings:', error);
+        setIsSelectorOpen(true);
+      }
+    };
+
+    initWorkspace();
+  }, []);
+
   // タブ変更ハンドラー
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabIndex(newValue);
+  };
+
+  // ワークスペース選択ハンドラー
+  const handleWorkspaceSelect = async (path: string, useWsl: boolean) => {
+    setCurrentWorkspace({ targetDirectory: path, useWsl });
+    setIsSelectorOpen(false);
+
+    // バックエンドにワークスペース変更を通知
+    try {
+      await window.electronAPI.workspace.set({ targetDirectory: path, useWsl });
+    } catch (error) {
+      console.error('Failed to set workspace:', error);
+    }
   };
 
   return (
@@ -104,7 +155,7 @@ function App() {
       <CssBaseline />
       <Box sx={{ flexGrow: 1 }}>
         <AppBar position="static">
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', pr: 2 }}>
             <Typography
               variant="subtitle1"
               component="div"
@@ -132,22 +183,50 @@ function App() {
               <Tab label="テスト履歴" />
               <Tab label="スコア分析" />
             </Tabs>
+
+            {/* ワークスペース表示と変更ボタン */}
+            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" sx={{ opacity: 0.8, mr: 1 }}>
+                {currentWorkspace ? currentWorkspace.targetDirectory : 'ワークスペース未選択'}
+                {currentWorkspace?.useWsl && ' (WSL)'}
+              </Typography>
+              <Tooltip title="ワークスペースを変更">
+                <Button
+                  color="inherit"
+                  variant="outlined"
+                  size="small"
+                  startIcon={<FolderOpenIcon />}
+                  onClick={() => setIsSelectorOpen(true)}
+                  sx={{ borderColor: 'rgba(255,255,255,0.5)' }}
+                >
+                  変更
+                </Button>
+              </Tooltip>
+            </Box>
           </Box>
         </AppBar>
 
-        <Box sx={{ width: '100%', height: 'calc(100vh - 50px)', px: 1 }}>
-          <TabPanel value={tabIndex} index={0}>
-            <TestExecutionForm />
-          </TabPanel>
+        {/* ワークスペース選択時のメインコンテンツ */}
+        {currentWorkspace ? (
+          <>
+            <TabPanel value={tabIndex} index={0}>
+              <TestExecutionForm />
+            </TabPanel>
+            <TabPanel value={tabIndex} index={1}>
+              <TestExecutionList key={currentWorkspace.targetDirectory} />
+            </TabPanel>
+            <TabPanel value={tabIndex} index={2}>
+              <ScoreAnalysis key={currentWorkspace.targetDirectory} />
+            </TabPanel>
+          </>
+        ) : null}
 
-          <TabPanel value={tabIndex} index={1}>
-            <TestExecutionList />
-          </TabPanel>
-
-          <TabPanel value={tabIndex} index={2}>
-            <ScoreAnalysis />
-          </TabPanel>
-        </Box>
+        {/* ワークスペース選択ダイアログ */}
+        <WorkspaceSelector
+          open={isSelectorOpen || !currentWorkspace}
+          onSelect={handleWorkspaceSelect}
+          currentPath={currentWorkspace?.targetDirectory}
+        />
       </Box>
     </ThemeProvider>
   );

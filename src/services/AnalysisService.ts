@@ -9,7 +9,12 @@ import {
   type ScoreData,
 } from '../schemas/analysis';
 import { ConfigService } from './ConfigService';
+import { PathHelper } from '../infrastructure/PathHelper';
+
 import type { ExecutionDataMinimal, ExecutionSeedResult } from '../types/summary';
+import type { IExecutionRepository } from '../repositories/IExecutionRepository';
+import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
+import type { WorkspaceService } from './WorkspaceService';
 
 /**
  * AnalysisService
@@ -23,48 +28,93 @@ import type { ExecutionDataMinimal, ExecutionSeedResult } from '../types/summary
  * 大量ファイル I/O をまとめて処理するバックエンドレイヤです。
  */
 export class AnalysisService {
-  private baseDir: string;
-  private inputDir: string;
-  private outputDir: string;
-  private dataDir: string;
-  private featureCachePath: string;
-  private bestScoresPath: string;
-  private settingsPath: string;
+  private executionRepository: IExecutionRepository;
+  private workspaceRepository: IWorkspaceRepository;
+  private workspaceService: WorkspaceService;
   private inputFeaturesCache: Map<string, InputFeature> = new Map();
   private bestScoresCache: Map<string, number> = new Map();
 
-  constructor(baseDir?: string) {
-    this.baseDir = baseDir || process.cwd();
-    this.inputDir = path.join(this.baseDir, '../tools', 'in');
-    this.outputDir = path.join(this.baseDir, '.', 'data', 'results');
-    this.dataDir = path.join(this.baseDir, 'analysis_data');
+  constructor(
+    executionRepository: IExecutionRepository,
+    workspaceRepository: IWorkspaceRepository,
+    workspaceService: WorkspaceService,
+  ) {
+    this.executionRepository = executionRepository;
+    this.workspaceRepository = workspaceRepository;
+    this.workspaceService = workspaceService;
 
-    // 必要なディレクトリの作成
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
-    }
-
-    // データファイルのパス
-    this.featureCachePath = path.join(this.dataDir, 'input_features.json');
-    const projectRoot = path.resolve(this.baseDir, '..');
-    this.bestScoresPath = path.join(projectRoot, 'pahcer', 'best_scores.json');
-    this.settingsPath = path.join(this.dataDir, 'analysis_settings.json');
-
-    // キャッシュの読み込み
-    this.loadCache();
+    // 初期化時はキャッシュを読み込まない（ワークスペースが確定してから読み込む）
   }
 
   /**
-   * 起動時にキャッシュを読み込む
+   * 現在のワークスペースのルートディレクトリを取得
+   */
+  private getWorkspaceDir(): string {
+    const workspace = this.workspaceService.getWorkspace();
+    if (!workspace) {
+      throw new Error('Workspace not set. Please select a workspace first.');
+    }
+    return workspace.targetDirectory;
+  }
+
+  private getInputDir(): string {
+    return PathHelper.getInputDirectory(this.getWorkspaceDir());
+  }
+
+  private getOutputDir(): string {
+    return PathHelper.getResultsDirectory(this.getWorkspaceDir());
+  }
+
+  private getDataDir(): string {
+    return PathHelper.getAnalysisDataDirectory(this.getWorkspaceDir());
+  }
+
+  private getFeatureCachePath(): string {
+    return path.join(this.getDataDir(), 'input_features.json');
+  }
+
+  private getSettingsPath(): string {
+    return path.join(this.getDataDir(), 'analysis_settings.json');
+  }
+
+  private getBestScoresPath(): string {
+    return PathHelper.getBestScoresPath(this.getWorkspaceDir());
+  }
+
+  /**
+   * キャッシュが読み込まれているか確認し、未読み込みなら読み込む
+   */
+  private ensureCacheLoaded(): void {
+    if (this.inputFeaturesCache.size === 0 && this.bestScoresCache.size === 0) {
+      this.reloadCache();
+    }
+  }
+
+  /**
+   * キャッシュを読み込む
    *   - 入力特徴量キャッシュ (input_features.json)
    *   - 最高得点キャッシュ   (best_scores.json)
-   * 失敗しても致命的ではないためログのみ出力
    */
-  private loadCache(): void {
-    // 入力特徴量キャッシュの読み込み
-    if (fs.existsSync(this.featureCachePath)) {
+  private reloadCache(): void {
+    // キャッシュをクリア
+    this.inputFeaturesCache.clear();
+    this.bestScoresCache.clear();
+
+    const dataDir = this.getDataDir();
+    // 必要なディレクトリの作成
+    if (!fs.existsSync(dataDir)) {
       try {
-        const data = JSON.parse(fs.readFileSync(this.featureCachePath, 'utf8'));
+        fs.mkdirSync(dataDir, { recursive: true });
+      } catch (e) {
+        console.error('データディレクトリの作成に失敗しました:', e);
+      }
+    }
+
+    // 入力特徴量キャッシュの読み込み
+    const featureCachePath = this.getFeatureCachePath();
+    if (fs.existsSync(featureCachePath)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(featureCachePath, 'utf8'));
         for (const [fileKey, featureData] of Object.entries(data)) {
           this.inputFeaturesCache.set(fileKey, featureData as InputFeature);
         }
@@ -74,9 +124,10 @@ export class AnalysisService {
     }
 
     // 最高得点キャッシュの読み込み
-    if (fs.existsSync(this.bestScoresPath)) {
+    const bestScoresPath = this.getBestScoresPath();
+    if (fs.existsSync(bestScoresPath)) {
       try {
-        const data = JSON.parse(fs.readFileSync(this.bestScoresPath, 'utf8'));
+        const data = JSON.parse(fs.readFileSync(bestScoresPath, 'utf8'));
         for (const [key, score] of Object.entries(data)) {
           this.bestScoresCache.set(key, score as number);
         }
@@ -91,13 +142,16 @@ export class AnalysisService {
    *   優先順位: 設定ファイル > 入力キャッシュ推測 > デフォルト
    */
   getSettings(): { featureFormat: string } {
+    this.ensureCacheLoaded();
+
     // 既定値（後でキャッシュから置換する可能性あり）
     let featureFormat = '';
+    const settingsPath = this.getSettingsPath();
 
     // 設定ファイルがあれば読み込む
-    if (fs.existsSync(this.settingsPath)) {
+    if (fs.existsSync(settingsPath)) {
       try {
-        const settings = JSON.parse(fs.readFileSync(this.settingsPath, 'utf8'));
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
         // 過去バージョンでネストして保存された場合の補正
         if (
           settings.featureFormat &&
@@ -134,10 +188,18 @@ export class AnalysisService {
    * エラー時は直前の設定を返して UI 側で扱いやすくする
    */
   saveSettings(featureFormat: string): { featureFormat: string } {
+    this.ensureCacheLoaded();
     const settings = { featureFormat };
+    const settingsPath = this.getSettingsPath();
 
     try {
-      fs.writeFileSync(this.settingsPath, JSON.stringify(settings, null, 2));
+      // ディレクトリが存在することを確認
+      const dir = path.dirname(settingsPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
       return settings;
     } catch (error) {
@@ -150,7 +212,15 @@ export class AnalysisService {
   private saveFeatureCache(): void {
     try {
       const featureData = Object.fromEntries(this.inputFeaturesCache);
-      fs.writeFileSync(this.featureCachePath, JSON.stringify(featureData, null, 2));
+      const featureCachePath = this.getFeatureCachePath();
+
+      // ディレクトリが存在することを確認
+      const dir = path.dirname(featureCachePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      fs.writeFileSync(featureCachePath, JSON.stringify(featureData, null, 2));
     } catch (error) {
       console.error('入力特徴量キャッシュの保存に失敗しました:', error);
     }
@@ -208,12 +278,14 @@ export class AnalysisService {
    */
   private async getExecutionData(executionId: string): Promise<ExecutionDataMinimal> {
     try {
+      const outputDir = this.getOutputDir();
+
       // 実行情報のJSONを読み取り
-      const infoPath = path.join(this.outputDir, executionId, 'execution_info.json');
+      const infoPath = path.join(outputDir, executionId, 'execution_info.json');
       const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
 
       // 実行サマリーを読み取り
-      const summaryPath = path.join(this.outputDir, executionId, 'summary.json');
+      const summaryPath = path.join(outputDir, executionId, 'summary.json');
       const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
 
       // コメントを取得
@@ -257,9 +329,12 @@ export class AnalysisService {
    * 入力特徴量キャッシュを再生成 (tools/in/*.txt をフルスキャン)
    */
   async updateFeatureCache(featureFormat: string): Promise<UpdateAnalysisResponse> {
+    this.ensureCacheLoaded();
     try {
       // 入力ディレクトリのテストケースファイルを検索（クロスプラットフォーム対応）
-      const inputFiles = glob.sync('*.txt', { cwd: this.inputDir, absolute: true });
+      const inputDir = this.getInputDir();
+      console.log('Searching for input files in:', inputDir);
+      const inputFiles = glob.sync('*.txt', { cwd: inputDir, absolute: true });
 
       // 特徴量を抽出して保存
       let featureCount = 0;
@@ -307,6 +382,7 @@ export class AnalysisService {
    *   3) AnalysisResponse を組み立てて返却
    */
   async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
+    this.ensureCacheLoaded();
     try {
       // 特徴量キャッシュを更新（キャッシュがない場合のみ）
       if (this.inputFeaturesCache.size === 0) {
@@ -314,7 +390,7 @@ export class AnalysisService {
       }
 
       // ★ 相対スコア計算用にベストスコアと目的関数を取得
-      const configService = new ConfigService();
+      const configService = new ConfigService(this.workspaceRepository);
       const [bestScores, objective] = await Promise.all([
         configService.getBestScores(),
         configService.getObjective(),

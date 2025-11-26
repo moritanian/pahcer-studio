@@ -1,16 +1,21 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
+
 import { ExecutionService } from './services/ExecutionService';
 import { AnalysisService } from './services/AnalysisService';
+
+import { WorkspaceService } from './services/WorkspaceService';
 import { DIContainer } from './infrastructure/DIContainer';
-import type { TestExecutionRequest } from './schemas/execution';
+import type { TestExecutionRequest, Workspace } from './schemas/execution';
 import type { AnalysisRequest, UpdateAnalysisRequest } from './schemas/analysis';
 import * as fsPromises from 'fs/promises';
 import { AssetDownloadService } from './services/AssetDownloadService';
+import { PathHelper } from './infrastructure/PathHelper';
 
 let mainWindow: BrowserWindow;
 let executionService: ExecutionService;
 let analysisService: AnalysisService;
+let workspaceService: WorkspaceService;
 
 function createWindow(): void {
   // メインウィンドウを作成
@@ -38,11 +43,16 @@ function createWindow(): void {
 function setupExecutionService(): void {
   // DIContainerから依存関係を取得
   const container = DIContainer.getInstance();
-  const executionRepository = container.getExecutionRepository();
-  const processManager = container.getProcessManager();
 
-  // ExecutionServiceを依存性注入で構築
-  executionService = new ExecutionService(executionRepository, processManager);
+  // SettingsPathを設定してDIContainerを初期化
+  // SettingsPathを設定してDIContainerを初期化
+  const settingsPath = PathHelper.getAppSettingsPath(app.getPath('userData'));
+  container.initialize(settingsPath);
+
+  // サービスを取得
+  executionService = container.getExecutionService();
+  analysisService = container.getAnalysisService();
+  workspaceService = container.getWorkspaceService();
 
   // ExecutionServiceのイベントをレンダラープロセスに転送
   executionService.on('execution:status', (data) => {
@@ -62,14 +72,9 @@ function setupExecutionService(): void {
   });
 }
 
-function setupAnalysisService(): void {
-  // AnalysisServiceを初期化
-  analysisService = new AnalysisService();
-}
-
 ipcMain.handle('execution:start', async (event, request: TestExecutionRequest) => {
-  const executionId = await executionService.startExecution(request);
-  return { id: executionId };
+  const id = await executionService.startExecution(request);
+  return { id };
 });
 
 ipcMain.handle('execution:stop', async (event, executionId: string) => {
@@ -100,6 +105,11 @@ ipcMain.handle('execution:delete', async (event, executionId: string) => {
   await executionService.deleteExecution(executionId);
 });
 
+ipcMain.handle('workspace:set', async (event, workspace: Workspace) => {
+  workspaceService.setWorkspace(workspace);
+  return { success: true };
+});
+
 // 分析関連のIPCハンドラー
 ipcMain.handle('analysis:analyze', async (event, request: AnalysisRequest) => {
   return await analysisService.analyze(request);
@@ -121,8 +131,12 @@ ipcMain.handle(
 );
 
 ipcMain.handle('asset:deleteVisualizer', async () => {
-  const dir = path.join(__dirname, '../public/visualizer');
   try {
+    const workspace = workspaceService.getWorkspace();
+    if (!workspace) {
+      return { success: false, error: 'Workspace not selected' };
+    }
+    const dir = PathHelper.getVisualizerDirectory(workspace.targetDirectory);
     await fsPromises.rm(dir, { recursive: true, force: true });
     await fsPromises.mkdir(dir, { recursive: true });
     return { success: true };
@@ -133,23 +147,32 @@ ipcMain.handle('asset:deleteVisualizer', async () => {
 
 // ビジュアライザフォルダ内で唯一の HTML ファイル名を返す
 ipcMain.handle('asset:getVisualizerEntry', async () => {
-  const dir = path.join(__dirname, '../public/visualizer');
   try {
+    const workspace = workspaceService.getWorkspace();
+    if (!workspace) {
+      return { exists: false, path: null };
+    }
+    const dir = PathHelper.getVisualizerDirectory(workspace.targetDirectory);
     const files = await fsPromises.readdir(dir);
     const htmls = files.filter((f) => f.toLowerCase().endsWith('.html'));
     if (htmls.length === 1) {
-      return { exists: true, entry: htmls[0] };
+      const fullPath = path.join(dir, htmls[0]);
+      return { exists: true, path: fullPath };
     }
-    return { exists: false, entry: null };
+    return { exists: false, path: null };
   } catch {
-    return { exists: false, entry: null };
+    return { exists: false, path: null };
   }
 });
 
 // ダウンロード: HTML + 直接参照 JS を保存（AssetDownloadService に任せる）
 ipcMain.handle('asset:downloadVisualizer', async (event, { url }: { url: string }) => {
-  const dir = path.join(__dirname, '../public/visualizer');
   try {
+    const workspace = workspaceService.getWorkspace();
+    if (!workspace) {
+      return { success: false, error: 'Workspace not selected' };
+    }
+    const dir = PathHelper.getVisualizerDirectory(workspace.targetDirectory);
     const svc = new AssetDownloadService(dir);
     const urls = await svc.download(url);
     return { success: true, urls };
@@ -158,10 +181,26 @@ ipcMain.handle('asset:downloadVisualizer', async (event, { url }: { url: string 
   }
 });
 
+// ダイアログ関連のIPCハンドラー
+ipcMain.handle('dialog:openDirectory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+  });
+  return result.canceled ? null : result.filePaths[0] || null;
+});
+
+// 設定関連のIPCハンドラー
+ipcMain.handle('settings:get', async () => {
+  return await workspaceService.getAppSettings();
+});
+
+ipcMain.handle('settings:update', async (_event, settings) => {
+  return await workspaceService.updateAppSettings(settings);
+});
+
 // アプリケーションの準備ができたらウィンドウを作成
 app.whenReady().then(() => {
   setupExecutionService();
-  setupAnalysisService();
   createWindow();
 });
 

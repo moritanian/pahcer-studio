@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { TestExecutionRequest } from '../schemas/execution';
+import type { TestExecutionRequest, Workspace } from '../schemas/execution';
+import { PathHelper } from './PathHelper';
 
 export interface PacherExecutionResult {
   success: boolean;
@@ -17,12 +18,9 @@ export interface PacherExecutionResult {
  */
 export class ProcessManager {
   private activeProcesses: Map<string, ChildProcess> = new Map();
-  private projectRoot: string;
   private resultsDir: string;
 
   constructor() {
-    // pacher_electron/がプロジェクトルートの1階層下にある前提
-    this.projectRoot = path.resolve(process.cwd(), '..');
     this.resultsDir = path.join(process.cwd(), 'data', 'results');
   }
 
@@ -31,11 +29,19 @@ export class ProcessManager {
    */
   async executePacher(
     request: TestExecutionRequest,
+    workspace: Workspace,
     executionId: string,
     onLog: (log: string) => void,
   ): Promise<PacherExecutionResult> {
     const startTime = Date.now();
-    const executionDir = path.join(this.resultsDir, executionId);
+
+    // 1. 実行ディレクトリ(CWD)の解決
+    // fs操作のためにWindowsからアクセス可能なパス(UNC)が必要
+    const executionCwd = workspace.targetDirectory;
+
+    // 3. ディレクトリの準備
+    const resultsDir = PathHelper.getResultsDirectory(executionCwd);
+    const executionDir = path.join(resultsDir, executionId);
 
     try {
       // 実行ディレクトリと初期情報JSONを作成
@@ -48,12 +54,12 @@ export class ProcessManager {
         totalCount: request.testCaseCount,
       };
       await fs.writeFile(
-        path.join(executionDir, 'execution_info.json'),
+        PathHelper.getExecutionInfoPath(executionCwd, executionId),
         JSON.stringify(initialInfo, null, 2),
       );
 
       // tools/out をバックアップ
-      await this.backupOutDirectory(executionId);
+      await this.backupOutDirectory(executionId, executionCwd);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(
@@ -69,13 +75,28 @@ export class ProcessManager {
       };
     }
 
+    // 4. プロセスの実行
+    // コマンドの構築をここで行う
+    let cmd: string[];
+    try {
+      cmd = await this.buildPacherCommand(request, workspace);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[${executionId}] Failed to build command: ${message}`);
+      return {
+        success: false,
+        executionTime: Date.now() - startTime,
+        stdout: '',
+        stderr: `Failed to build command: ${message}`,
+        errorMessage: `Failed to build command: ${message}`,
+      };
+    }
+
     return new Promise((resolve) => {
       try {
-        const cmd = this.buildPacherCommand(request);
-
         const child = spawn(cmd[0], cmd.slice(1), {
           stdio: ['pipe', 'pipe', 'pipe'],
-          cwd: this.projectRoot,
+          cwd: executionCwd,
         });
 
         this.activeProcesses.set(executionId, child);
@@ -101,7 +122,7 @@ export class ProcessManager {
 
           if (success) {
             try {
-              await this.saveTestResults(executionId);
+              await this.saveTestResults(executionId, executionCwd, workspace);
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
               console.error(`[${executionId}] Failed to save results: ${message}`);
@@ -110,7 +131,7 @@ export class ProcessManager {
 
           // tools/out_bak を復元
           try {
-            await this.restoreOutDirectory(executionId);
+            await this.restoreOutDirectory(executionId, executionCwd);
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[${executionId}] Failed to restore out directory: ${message}`);
@@ -131,7 +152,7 @@ export class ProcessManager {
 
           // エラー時も復元を試みる
           try {
-            await this.restoreOutDirectory(executionId);
+            await this.restoreOutDirectory(executionId, executionCwd);
           } catch (restoreError) {
             const message =
               restoreError instanceof Error ? restoreError.message : String(restoreError);
@@ -168,15 +189,24 @@ export class ProcessManager {
    * pacherコマンドの引数配列を構築する
    * Pythonコード(pahcer_service.py)の仕様に合わせる
    */
-  private buildPacherCommand(request: TestExecutionRequest): string[] {
+  private async buildPacherCommand(
+    request: TestExecutionRequest,
+    workspace: Workspace,
+  ): Promise<string[]> {
     const cmd = ['pahcer', 'run'];
 
     if (request.comment) cmd.push('-c', request.comment);
     if (request.shuffle) cmd.push('--shuffle');
     if (request.freezeBestScores) cmd.push('--freeze-best-scores');
-    // Note: Pythonコードでは -n (test_case_count) や -s (start_seed) は
-    // pahcer run の引数として渡されていなかったため、ここでも含めない。
-    // これらのパラメータはpahcer_config.toml等で制御される想定。
+
+    // WSL モードの場合、linuxExecutionCwd を使用
+    if (workspace.useWsl) {
+      // Windows パスまたは UNC パスを WSL パスに変換
+      const linuxExecutionCwd = await PathHelper.windowsToWsl(workspace.targetDirectory);
+
+      // WSLモード: wsl --shell-type login --cd <path> pahcer run ...
+      cmd.unshift('wsl', '--shell-type', 'login', '--cd', linuxExecutionCwd);
+    }
 
     return cmd;
   }
@@ -198,11 +228,15 @@ export class ProcessManager {
    * テスト結果を実行IDごとのフォルダに保存する
    * Pythonコード(_save_test_results)のロジックを再現
    */
-  private async saveTestResults(executionId: string): Promise<void> {
-    const executionDir = path.join(this.resultsDir, executionId);
+  private async saveTestResults(
+    executionId: string,
+    workingDir: string,
+    workspace: Workspace,
+  ): Promise<void> {
+    const targetDir = workspace.targetDirectory;
 
     // 1. 最新のサマリーJSONをコピー
-    const jsonDir = path.join(this.projectRoot, 'pahcer', 'json');
+    const jsonDir = PathHelper.getJsonDirectory(workingDir);
     try {
       // コピー元のディレクトリが存在するか確認
       await fs.access(jsonDir);
@@ -221,7 +255,7 @@ export class ProcessManager {
         )[0];
 
         const srcPath = path.join(jsonDir, latestFile.file);
-        const destPath = path.join(executionDir, 'summary.json');
+        const destPath = PathHelper.getSummaryPath(targetDir, executionId);
         await fs.copyFile(srcPath, destPath);
       }
     } catch (error) {
@@ -234,8 +268,8 @@ export class ProcessManager {
     }
 
     // 2. ケースごとの出力ファイルをコピー
-    const outDir = path.join(this.projectRoot, 'tools', 'out');
-    const caseOutputsDir = path.join(executionDir, 'case_outputs');
+    const outDir = PathHelper.getOutputDirectory(workingDir);
+    const caseOutputsDir = PathHelper.getCaseOutputsDirectory(targetDir, executionId);
     try {
       await fs.mkdir(caseOutputsDir, { recursive: true });
       const outFiles = await fs.readdir(outDir);
@@ -258,9 +292,9 @@ export class ProcessManager {
   /**
    * tools/out が存在する場合、tools/out_bak にバックアップする
    */
-  private async backupOutDirectory(executionId: string): Promise<void> {
-    const outDir = path.join(this.projectRoot, 'tools', 'out');
-    const outBakDir = path.join(this.projectRoot, 'tools', 'out_bak');
+  private async backupOutDirectory(executionId: string, workingDir: string): Promise<void> {
+    const outDir = PathHelper.getOutputDirectory(workingDir);
+    const outBakDir = PathHelper.getOutputBackupDirectory(workingDir);
 
     try {
       // tools/out が存在するかチェック
@@ -290,9 +324,9 @@ export class ProcessManager {
   /**
    * tools/out_bak が存在する場合、tools/out を削除してから tools/out_bak を tools/out に復元する
    */
-  private async restoreOutDirectory(executionId: string): Promise<void> {
-    const outDir = path.join(this.projectRoot, 'tools', 'out');
-    const outBakDir = path.join(this.projectRoot, 'tools', 'out_bak');
+  private async restoreOutDirectory(executionId: string, workingDir: string): Promise<void> {
+    const outDir = path.join(workingDir, 'tools', 'out');
+    const outBakDir = path.join(workingDir, 'tools', 'out_bak');
 
     try {
       // tools/out_bak が存在するかチェック

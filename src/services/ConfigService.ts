@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { parse, stringify } from 'smol-toml';
+import { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
+import { PathHelper } from '../infrastructure/PathHelper';
 
 export interface PahcerConfig {
   general?: {
@@ -23,19 +24,44 @@ export interface PahcerConfig {
 
 /**
  * pahcer_config.tomlの操作を行うサービス
- * Python側のconfig_service.pyの機能をTypeScriptで実装
  */
 export class ConfigService {
-  private readonly configPath: string;
-  private readonly backupPath: string;
-  private readonly bestScoresPath: string;
+  private readonly workspaceRepository: IWorkspaceRepository;
 
-  constructor() {
-    // pacher_electron/がプロジェクトルートの1階層下にある前提
-    const projectRoot = path.resolve(process.cwd(), '..');
-    this.configPath = path.join(projectRoot, 'pahcer_config.toml');
-    this.backupPath = path.join(projectRoot, 'pahcer_config.toml.bak');
-    this.bestScoresPath = path.join(projectRoot, 'pahcer', 'best_scores.json');
+  constructor(workspaceRepository: IWorkspaceRepository) {
+    this.workspaceRepository = workspaceRepository;
+  }
+
+  /**
+   * 現在のワークスペースディレクトリを取得
+   */
+  private getWorkspaceDir(): string {
+    const workspace = this.workspaceRepository.getWorkspace();
+    if (!workspace) {
+      throw new Error('Workspace not set. Please select a workspace first.');
+    }
+    return workspace.targetDirectory;
+  }
+
+  /**
+   * pahcer_config.toml のパスを取得
+   */
+  private getConfigPath(): string {
+    return PathHelper.getConfigPath(this.getWorkspaceDir());
+  }
+
+  /**
+   * pahcer_config.toml.bak のパスを取得
+   */
+  private getBackupPath(): string {
+    return PathHelper.getBackupPath(this.getWorkspaceDir());
+  }
+
+  /**
+   * best_scores.json のパスを取得
+   */
+  private getBestScoresPath(): string {
+    return PathHelper.getBestScoresPath(this.getWorkspaceDir());
   }
 
   /**
@@ -43,7 +69,8 @@ export class ConfigService {
    */
   async getConfig(): Promise<PahcerConfig> {
     try {
-      const content = await fs.readFile(this.configPath, 'utf-8');
+      const configPath = this.getConfigPath();
+      const content = await fs.readFile(configPath, 'utf-8');
       return parse(content) as PahcerConfig;
     } catch (error) {
       console.error(`Error loading config: ${error}`);
@@ -64,7 +91,8 @@ export class ConfigService {
 
       // smol-tomlのstringifyを使用してTOML文字列を生成
       const tomlContent = stringify(updatedConfig);
-      await fs.writeFile(this.configPath, tomlContent, 'utf-8');
+      const configPath = this.getConfigPath();
+      await fs.writeFile(configPath, tomlContent, 'utf-8');
 
       return await this.getConfig();
     } catch (error) {
@@ -78,7 +106,9 @@ export class ConfigService {
    */
   async backupConfig(): Promise<boolean> {
     try {
-      await fs.copyFile(this.configPath, this.backupPath);
+      const configPath = this.getConfigPath();
+      const backupPath = this.getBackupPath();
+      await fs.copyFile(configPath, backupPath);
       return true;
     } catch (error) {
       console.error(`Error backing up config: ${error}`);
@@ -91,8 +121,11 @@ export class ConfigService {
    */
   async restoreConfig(): Promise<boolean> {
     try {
-      await fs.access(this.backupPath);
-      await fs.copyFile(this.backupPath, this.configPath);
+      const backupPath = this.getBackupPath();
+      const configPath = this.getConfigPath();
+
+      await fs.access(backupPath);
+      await fs.copyFile(backupPath, configPath);
       return true;
     } catch (error) {
       console.error(`Error restoring config: ${error}`);
@@ -124,7 +157,8 @@ export class ConfigService {
 
       // smol-tomlのstringifyを使用してTOML文字列を生成
       const tomlContent = stringify(updatedConfig);
-      await fs.writeFile(this.configPath, tomlContent, 'utf-8');
+      const configPath = this.getConfigPath();
+      await fs.writeFile(configPath, tomlContent, 'utf-8');
 
       return true;
     } catch (error) {
@@ -162,7 +196,8 @@ export class ConfigService {
    */
   async getBestScores(): Promise<Record<number, number>> {
     try {
-      const content = await fs.readFile(this.bestScoresPath, 'utf-8');
+      const bestScoresPath = this.getBestScoresPath();
+      const content = await fs.readFile(bestScoresPath, 'utf-8');
       const bestScores = JSON.parse(content);
 
       // JSONのキーは文字列なので、数値に変換

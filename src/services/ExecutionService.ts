@@ -6,8 +6,10 @@ import type {
   TestExecutionStatus,
   LogMessage,
   TestCase,
+  Workspace,
 } from '../schemas/execution';
 import type { IExecutionRepository } from '../repositories/IExecutionRepository';
+import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
 import type { ProcessManager } from '../infrastructure/ProcessManager';
 import { ConfigService } from './ConfigService';
 import { ScoreAnalysisService } from './ScoreAnalysisService';
@@ -22,11 +24,14 @@ export class ExecutionService extends EventEmitter {
 
   constructor(
     private readonly executionRepository: IExecutionRepository,
+    private readonly workspaceRepository: IWorkspaceRepository,
     private readonly processManager: ProcessManager,
+    configService: ConfigService,
+    scoreAnalysisService: ScoreAnalysisService,
   ) {
     super();
-    this.configService = new ConfigService();
-    this.scoreAnalysisService = new ScoreAnalysisService();
+    this.configService = configService;
+    this.scoreAnalysisService = scoreAnalysisService;
   }
 
   /**
@@ -34,6 +39,12 @@ export class ExecutionService extends EventEmitter {
    */
   async startExecution(request: TestExecutionRequest): Promise<string> {
     const executionId = `${uuidv4()}`;
+
+    // WorkspaceRepository からワークスペースを取得
+    const workspace = this.workspaceRepository.getWorkspace();
+    if (!workspace) {
+      throw new Error('Workspace not set. Please select a workspace first.');
+    }
 
     // Python側と同じように、pahcer_config.tomlを更新
     this.emitLog(executionId, 'info', 'Updating pahcer_config.toml for test execution...');
@@ -75,7 +86,7 @@ export class ExecutionService extends EventEmitter {
     await this.executionRepository.save(initialExecution);
 
     // 非同期でpacher実行を開始
-    this.executePacher(executionId, request).catch((error) => {
+    this.executePacher(executionId, request, workspace).catch((error) => {
       console.error(`Execution ${executionId} failed fatally:`, error);
       this.updateExecutionStatus(executionId, 'FAILED');
     });
@@ -149,13 +160,18 @@ export class ExecutionService extends EventEmitter {
   /**
    * pacher実行のメインロジック
    */
-  private async executePacher(executionId: string, request: TestExecutionRequest): Promise<void> {
+  private async executePacher(
+    executionId: string,
+    request: TestExecutionRequest,
+    workspace: Workspace,
+  ): Promise<void> {
     try {
       await this.updateExecutionStatus(executionId, 'RUNNING');
       this.emitLog(executionId, 'info', `pacher test execution started: ${executionId}`);
 
       const result = await this.processManager.executePacher(
         request,
+        workspace,
         executionId,
         (log: string) => {
           // ログの各行を個別にemitする

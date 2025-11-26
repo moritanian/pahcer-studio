@@ -10,7 +10,7 @@ export const DownloadVisualizerResponseSchema = z.object({
 // getVisualizerEntry のレスポンス
 export const VisualizerEntryResponseSchema = z.object({
   exists: z.boolean(),
-  entry: z.string().nullable(),
+  path: z.string().nullable(),
 });
 
 export type DownloadVisualizerResponse = z.infer<typeof DownloadVisualizerResponseSchema>;

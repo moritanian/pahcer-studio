@@ -7,7 +7,10 @@ import {
   type TestCase,
 } from '../schemas/execution';
 import type { IExecutionRepository } from './IExecutionRepository';
+import type { IWorkspaceRepository } from './IWorkspaceRepository';
+import { PathHelper } from '../infrastructure/PathHelper';
 import { ScoreAnalysisService } from '../services/ScoreAnalysisService';
+import { ConfigService } from '../services/ConfigService';
 import type { SummaryJson, SummaryCaseRaw } from '../types/summary';
 
 /**
@@ -15,35 +18,55 @@ import type { SummaryJson, SummaryCaseRaw } from '../types/summary';
  * PythonのPahcerServiceのファイル構造（results/{id}/...）を模倣する。
  */
 export class ExecutionRepository implements IExecutionRepository {
-  private resultsDirectory: string;
   private scoreAnalysisService: ScoreAnalysisService;
+  private workspaceRepository: IWorkspaceRepository;
 
-  constructor() {
-    // process.cwd() は electron の app.getAppPath() に相当し、
-    // 開発時は pacher_electron/、パッケージ後は resources/app/
-    // そこから一階層上の pacher_proj/data/results を指すようにする
-    this.resultsDirectory = path.resolve(process.cwd(), '.', 'data', 'results');
-    this.scoreAnalysisService = new ScoreAnalysisService();
-    this.ensureDirectory();
+  constructor(workspaceRepository: IWorkspaceRepository) {
+    this.scoreAnalysisService = new ScoreAnalysisService(new ConfigService(workspaceRepository));
+    this.workspaceRepository = workspaceRepository;
+  }
+
+  /**
+   * resultsDirectory を動的に取得する
+   */
+  private getResultsDirectory(): string {
+    const workspace = this.workspaceRepository.getWorkspace();
+    if (!workspace) {
+      throw new Error('Workspace is not selected');
+    }
+    return PathHelper.getResultsDirectory(workspace.targetDirectory);
   }
 
   private ensureDirectory(): void {
+    const dir = this.getResultsDirectory();
     // ディレクトリの作成に失敗しても初期化段階では致命的でないため、ログのみに留める
-    fs.mkdir(this.resultsDirectory, { recursive: true }).catch((err) =>
+    fs.mkdir(dir, { recursive: true }).catch((err) =>
       console.error('Failed to create results directory:', err),
     );
   }
 
   private getExecutionDirPath(id: string): string {
-    return path.join(this.resultsDirectory, id);
+    const workspace = this.workspaceRepository.getWorkspace();
+    if (!workspace) {
+      throw new Error('Workspace is not selected');
+    }
+    return PathHelper.getExecutionDirectory(workspace.targetDirectory, id);
   }
 
   private getExecutionInfoPath(id: string): string {
-    return path.join(this.getExecutionDirPath(id), 'execution_info.json');
+    const workspace = this.workspaceRepository.getWorkspace();
+    if (!workspace) {
+      throw new Error('Workspace is not selected');
+    }
+    return PathHelper.getExecutionInfoPath(workspace.targetDirectory, id);
   }
 
   getSummaryPath(id: string): string {
-    return path.join(this.getExecutionDirPath(id), 'summary.json');
+    const workspace = this.workspaceRepository.getWorkspace();
+    if (!workspace) {
+      throw new Error('Workspace is not selected');
+    }
+    return PathHelper.getSummaryPath(workspace.targetDirectory, id);
   }
 
   /**
@@ -132,6 +155,21 @@ export class ExecutionRepository implements IExecutionRepository {
   }
 
   /**
+   * テストケースの出力ファイルパスを取得
+   */
+  private getTestCaseOutputFilePath(executionId: string, seed: number): string {
+    const outputFileName = `${String(seed).padStart(4, '0')}.txt`;
+    const workspace = this.workspaceRepository.getWorkspace();
+    if (!workspace) {
+      throw new Error('Workspace is not selected');
+    }
+    return path.join(
+      PathHelper.getCaseOutputsDirectory(workspace.targetDirectory, executionId),
+      outputFileName,
+    );
+  }
+
+  /**
    * 実行IDでテストケース一覧を取得する
    */
   async findTestCasesByExecutionId(id: string): Promise<TestCase[]> {
@@ -155,8 +193,7 @@ export class ExecutionRepository implements IExecutionRepository {
     const caseIndex = summaryData.cases.findIndex((c: SummaryCaseRaw) => c.seed === seed);
     if (caseIndex === -1) return null;
 
-    const outputFileName = `${String(seed).padStart(4, '0')}.txt`;
-    const outputFilePath = path.join(this.getExecutionDirPath(id), 'case_outputs', outputFileName);
+    const outputFilePath = this.getTestCaseOutputFilePath(id, seed);
 
     try {
       return await fs.readFile(outputFilePath, 'utf8');
@@ -171,26 +208,22 @@ export class ExecutionRepository implements IExecutionRepository {
    */
   async findAll(): Promise<TestExecution[]> {
     try {
-      const executionDirs = await fs.readdir(this.resultsDirectory, {
-        withFileTypes: true,
-      });
-      const executions: TestExecution[] = [];
+      const resultsDir = this.getResultsDirectory();
+      const entries = await fs.readdir(resultsDir, { withFileTypes: true });
+      const executionIds = entries.filter((e) => e.isDirectory()).map((e) => e.name);
 
-      for (const dirent of executionDirs) {
-        if (dirent.isDirectory()) {
-          const id = dirent.name;
-          try {
-            const execution = await this.findById(id);
-            if (execution) {
-              executions.push(execution);
-            }
-          } catch (error: unknown) {
-            console.error(`Could not load execution from dir ${id}:`, error);
-          }
-        }
-      }
+      const executions = await Promise.all(
+        executionIds.map((id) =>
+          this.findById(id).catch((err) => {
+            console.error(`Failed to load execution ${id}:`, err);
+            return null;
+          }),
+        ),
+      );
 
-      return executions.sort((a, b) => {
+      const validExecutions = executions.filter((e): e is TestExecution => e !== null);
+
+      return validExecutions.sort((a, b) => {
         const timeA = a.startTime ? new Date(a.startTime).getTime() : 0;
         const timeB = b.startTime ? new Date(b.startTime).getTime() : 0;
         return timeB - timeA;

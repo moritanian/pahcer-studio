@@ -16,7 +16,7 @@ export class AssetDownloadService {
   private visitedJs: Set<string> = new Set();
   private urlSet: Set<string> = new Set();
 
-  constructor(outputRoot: string = path.join(process.cwd(), 'public', 'visualizer')) {
+  constructor(outputRoot: string) {
     this.outputRoot = outputRoot;
   }
 

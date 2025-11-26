@@ -12,10 +12,9 @@ export class ScoreAnalysisService {
 
   /**
    * コンストラクタ
-   * ConfigService はファイル I/O を伴うため、ここで単一インスタンスを生成して再利用します。
    */
-  constructor() {
-    this.configService = new ConfigService();
+  constructor(configService: ConfigService) {
+    this.configService = configService;
   }
 
   /**

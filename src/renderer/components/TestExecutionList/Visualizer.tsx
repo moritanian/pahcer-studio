@@ -68,7 +68,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
 
   // キャッシュバスター
   const [cacheKey, setCacheKey] = useState<number>(() => Date.now());
-  const [entryHtml, setEntryHtml] = useState<string | null>(null);
+  const [visualizerPath, setVisualizerPath] = useState<string | null>(null);
 
   // 入力制限: 0 以上であれば上限なし
   const minSeed = 0;
@@ -83,7 +83,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
       try {
         const res = await window.electronAPI.asset.getVisualizerEntry();
         setVisualizerReady(res.exists);
-        setEntryHtml(res.entry);
+        setVisualizerPath(res.path);
       } catch (err) {
         console.error(err);
         setVisualizerReady(false);
@@ -223,7 +223,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
       await window.electronAPI.asset.deleteVisualizer();
       setVisualizerReady(false);
       setCacheKey(Date.now());
-      setEntryHtml(null);
+      setVisualizerPath(null);
       onError('ビジュアライザのアセットを削除しました');
     } catch (err) {
       console.error(err);
@@ -259,7 +259,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
   const refreshEntry = async () => {
     const res = await window.electronAPI.asset.getVisualizerEntry();
     setVisualizerReady(res.exists);
-    setEntryHtml(res.entry);
+    setVisualizerPath(res.path);
   };
 
   /** スケール変更ハンドラ */
@@ -412,9 +412,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
               >
                 <iframe
                   ref={visualizerIframeRef}
-                  src={
-                    entryHtml ? `../../public/visualizer/${entryHtml}?v=${cacheKey}` : 'about:blank'
-                  }
+                  src={visualizerPath ? `file://${visualizerPath}?v=${cacheKey}` : 'about:blank'}
                   title="Visualizer"
                   width="100%"
                   height="100%"
@@ -481,10 +479,10 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
 
       {/* 削除確認ダイアログ */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
-        <DialogTitle>アセット削除の確認</DialogTitle>
+        <DialogTitle>ビジュアライザのクリア</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            public/visualizer フォルダ内のファイルをすべて削除します。よろしいですか？
+            ワークスペース内の visualizer フォルダ内のファイルをすべて削除します。よろしいですか？
           </DialogContentText>
         </DialogContent>
         <DialogActions>

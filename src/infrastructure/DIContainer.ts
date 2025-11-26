@@ -1,6 +1,13 @@
 import type { IExecutionRepository } from '../repositories/IExecutionRepository';
 import { ExecutionRepository } from '../repositories/ExecutionRepository';
+import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
+import { WorkspaceRepository } from '../repositories/WorkspaceRepository';
 import { ProcessManager } from './ProcessManager';
+import { WorkspaceService } from '../services/WorkspaceService';
+import { ConfigService } from '../services/ConfigService';
+import { AnalysisService } from '../services/AnalysisService';
+import { ExecutionService } from '../services/ExecutionService';
+import { ScoreAnalysisService } from '../services/ScoreAnalysisService';
 
 /**
  * 依存性注入コンテナ
@@ -9,6 +16,13 @@ export class DIContainer {
   private static instance: DIContainer;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private dependencies: Map<string, any> = new Map();
+
+  // Service singletons
+  private workspaceService?: WorkspaceService;
+  private configService?: ConfigService;
+  private analysisService?: AnalysisService;
+  private executionService?: ExecutionService;
+  private scoreAnalysisService?: ScoreAnalysisService;
 
   private constructor() {
     this.setupDependencies();
@@ -26,9 +40,47 @@ export class DIContainer {
     const processManager = new ProcessManager();
     this.dependencies.set('ProcessManager', processManager);
 
-    // ExecutionRepositoryの設定
-    const executionRepository = new ExecutionRepository();
+    // WorkspaceRepositoryの設定
+    const workspaceRepository = new WorkspaceRepository();
+    this.dependencies.set('IWorkspaceRepository', workspaceRepository);
+
+    // ExecutionRepositoryの設定（WorkspaceRepositoryに依存）
+    const executionRepository = new ExecutionRepository(workspaceRepository);
     this.dependencies.set('IExecutionRepository', executionRepository);
+  }
+
+  /**
+   * サービスを初期化する（main.tsから呼ばれる）
+   */
+  public initialize(settingsPath: string): void {
+    const executionRepository = this.getExecutionRepository();
+    const workspaceRepository = this.getWorkspaceRepository();
+    const processManager = this.getProcessManager();
+
+    // WorkspaceServiceを初期化
+    this.workspaceService = new WorkspaceService(settingsPath, workspaceRepository);
+
+    // ConfigServiceを初期化
+    this.configService = new ConfigService(workspaceRepository);
+
+    // ScoreAnalysisServiceを初期化
+    this.scoreAnalysisService = new ScoreAnalysisService(this.configService);
+
+    // ExecutionServiceを初期化
+    this.executionService = new ExecutionService(
+      executionRepository,
+      workspaceRepository,
+      processManager,
+      this.configService,
+      this.scoreAnalysisService,
+    );
+
+    // AnalysisServiceを初期化
+    this.analysisService = new AnalysisService(
+      executionRepository,
+      workspaceRepository,
+      this.workspaceService,
+    );
   }
 
   public get<T>(key: string): T {
@@ -52,6 +104,45 @@ export class DIContainer {
     return this.get<ProcessManager>('ProcessManager');
   }
 
+  public getWorkspaceRepository(): IWorkspaceRepository {
+    return this.get<IWorkspaceRepository>('IWorkspaceRepository');
+  }
+
+  public getWorkspaceService(): WorkspaceService {
+    if (!this.workspaceService) {
+      throw new Error('DIContainer not initialized. Call initialize() first.');
+    }
+    return this.workspaceService;
+  }
+
+  public getConfigService(): ConfigService {
+    if (!this.configService) {
+      throw new Error('DIContainer not initialized. Call initialize() first.');
+    }
+    return this.configService;
+  }
+
+  public getAnalysisService(): AnalysisService {
+    if (!this.analysisService) {
+      throw new Error('DIContainer not initialized. Call initialize() first.');
+    }
+    return this.analysisService;
+  }
+
+  public getExecutionService(): ExecutionService {
+    if (!this.executionService) {
+      throw new Error('DIContainer not initialized. Call initialize() first.');
+    }
+    return this.executionService;
+  }
+
+  public getScoreAnalysisService(): ScoreAnalysisService {
+    if (!this.scoreAnalysisService) {
+      throw new Error('DIContainer not initialized. Call initialize() first.');
+    }
+    return this.scoreAnalysisService;
+  }
+
   // テスト用のモック注入
   public registerMock<T>(key: string, mockInstance: T): void {
     this.dependencies.set(key, mockInstance);
@@ -60,6 +151,11 @@ export class DIContainer {
   // コンテナのリセット（テスト用）
   public reset(): void {
     this.dependencies.clear();
+    this.workspaceService = undefined;
+    this.configService = undefined;
+    this.analysisService = undefined;
+    this.executionService = undefined;
+    this.scoreAnalysisService = undefined;
     this.setupDependencies();
   }
 }

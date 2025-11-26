@@ -4,8 +4,10 @@ import type {
   ExecutionLogEvent,
   ExecutionStatusEvent,
   ExecutionProgressEvent,
+  Workspace,
 } from './schemas/execution';
 import type { AnalysisRequest, UpdateAnalysisRequest } from './schemas/analysis';
+import type { AppSettings } from './services/WorkspaceService';
 import type { ElectronAPI } from './types/electron-api';
 
 // IPC リスナーのラッパーを保持するマップ (callback -> wrappedListener)
@@ -82,6 +84,16 @@ const electronAPI: ElectronAPI = {
     deleteVisualizer: () => ipcRenderer.invoke('asset:deleteVisualizer'),
     downloadVisualizer: (url: string) => ipcRenderer.invoke('asset:downloadVisualizer', { url }),
     getVisualizerEntry: () => ipcRenderer.invoke('asset:getVisualizerEntry'),
+  },
+  dialog: {
+    openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
+  },
+  workspace: {
+    set: (workspace: Workspace) => ipcRenderer.invoke('workspace:set', workspace),
+  },
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    update: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:update', settings),
   },
 };
 

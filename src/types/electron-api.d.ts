@@ -5,6 +5,7 @@ import type {
   ExecutionLogEvent,
   ExecutionStatusEvent,
   ExecutionProgressEvent,
+  Workspace,
 } from '../schemas/execution';
 import type {
   AnalysisRequest,
@@ -15,6 +16,7 @@ import type {
 } from '../schemas/analysis';
 import type { DownloadVisualizerResponse, VisualizerEntryResponse } from '../schemas/asset';
 import type { SimpleSuccessResponse, IdResponse } from '../schemas/execution';
+import type { AppSettings } from '../services/ConfigService';
 
 // ElectronAPI に共通で使用するインターフェース
 export interface ElectronAPI {
@@ -43,6 +45,16 @@ export interface ElectronAPI {
     deleteVisualizer: () => Promise<SimpleSuccessResponse>;
     downloadVisualizer: (url: string) => Promise<DownloadVisualizerResponse>;
     getVisualizerEntry: () => Promise<VisualizerEntryResponse>;
+  };
+  dialog: {
+    openDirectory: () => Promise<string | null>;
+  };
+  workspace: {
+    set: (workspace: Workspace) => Promise<{ success: boolean }>;
+  };
+  settings: {
+    get: () => Promise<AppSettings>;
+    update: (settings: Partial<AppSettings>) => Promise<AppSettings>;
   };
   getVersion: () => Promise<string>;
 }
