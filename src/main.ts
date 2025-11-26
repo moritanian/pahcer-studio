@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import * as path from 'path';
 
 import { ExecutionService } from './services/ExecutionService';
@@ -30,6 +30,9 @@ function createWindow(): void {
     titleBarStyle: 'default',
     title: 'AtCoder Test Runner',
   });
+
+  // メニューバーを完全に削除
+  Menu.setApplicationMenu(null);
 
   // HTMLファイルを読み込み
   mainWindow.loadFile(path.join(__dirname, '../dist/renderer/index.html'));
