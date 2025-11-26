@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut } from 'electron';
 import * as path from 'path';
 
 import { ExecutionService } from './services/ExecutionService';
@@ -205,10 +205,18 @@ ipcMain.handle('settings:update', async (_event, settings) => {
 app.whenReady().then(() => {
   setupExecutionService();
   createWindow();
+
+  // 開発者ツールのショートカットを登録
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    mainWindow?.webContents.toggleDevTools();
+  });
 });
 
 // すべてのウィンドウが閉じられたときの処理
 app.on('window-all-closed', () => {
+  // グローバルショートカットを解除
+  globalShortcut.unregisterAll();
+
   // macOS以外では、すべてのウィンドウが閉じられたらアプリを終了
   if (process.platform !== 'darwin') {
     app.quit();
