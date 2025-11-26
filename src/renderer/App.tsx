@@ -37,7 +37,7 @@ function TabPanel(props: TabPanelProps) {
       hidden={value !== index}
       id={`tabpanel-${index}`}
       aria-labelledby={`tab-${index}`}
-      style={{ height: 'calc(100vh - 100px)' }}
+      style={{ height: 'calc(100vh - 60px)' }}
       {...other}
     >
       {value === index && <Box sx={{ p: 0, height: '100%' }}>{children}</Box>}
