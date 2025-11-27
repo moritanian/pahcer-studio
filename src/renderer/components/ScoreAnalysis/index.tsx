@@ -107,6 +107,32 @@ const ScoreAnalysis: React.FC = () => {
   }, [settingsLoaded, featureFormat, executions, fetchAnalysisData]);
 
   /* =====================================================
+   * 2. テスト実行ステータス監視
+   *    テスト実行の完了を検知して実行リストを更新
+   * ===================================================== */
+  useEffect(() => {
+    const handleStatus = async () => {
+      // テスト実行が完了したら実行リストを再取得
+      try {
+        const executionsList = await window.electronAPI.execution.getAll();
+        if (executionsList && Array.isArray(executionsList)) {
+          const completedExecutions = executionsList.filter((e) => e.status === 'COMPLETED');
+          setExecutions(completedExecutions);
+        }
+      } catch (error) {
+        console.error('実行リストの更新に失敗しました:', error);
+      }
+    };
+
+    window.electronAPI.execution.onStatus(handleStatus);
+
+    return () => {
+      // クリーンアップ（イベント解除）
+      window.electronAPI.execution.offStatus(handleStatus);
+    };
+  }, []);
+
+  /* =====================================================
    * 3. キャッシュ更新＆再フェッチ
    *    - バックエンドに feature 抽出とスコア計算を依頼
    *    - 成功時は saveSettings でフォーマットを永続化
