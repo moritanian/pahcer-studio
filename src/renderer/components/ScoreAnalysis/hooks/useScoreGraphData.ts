@@ -29,6 +29,17 @@ export interface ScoreGraphPoint {
   [key: string]: number | number[] | string | null | undefined;
 }
 
+/**
+ * executionId とコメントからグラフのデータキーを計算
+ * - 予約語（"x", "seeds", "count"）の場合はプレフィックスを付ける
+ */
+export function getExecDataKey(execution: TestExecution | undefined, execId: string): string {
+  const execName = execution?.comment || execId.substring(0, 8);
+  return ['x', 'seeds', 'count'].includes(execName)
+    ? `${execId.substring(0, 8)}_${execName}`
+    : execName;
+}
+
 export function useChartDataset(
   analysisResult: AnalysisResponse | null,
   executions: TestExecution[],
@@ -76,9 +87,10 @@ export function useChartDataset(
             ? scoreData.relativeScores?.[seedKey]
             : scoreData.scores[seedKey];
           if (score !== undefined && score >= 0) {
-            const execName =
-              executions.find((e) => e.id === execId)?.comment || execId.substring(0, 8);
-            dataPoint[execName] = score;
+            const execution = executions.find((e) => e.id === execId);
+            const dataKey = getExecDataKey(execution, execId);
+
+            dataPoint[dataKey] = score;
           }
         }
       });
@@ -117,18 +129,19 @@ export function useChartDataset(
 
         // グループ内平均スコアを計算
         selectedExecutionIds.forEach((execId) => {
-          const execName =
-            executions.find((e) => e.id === execId)?.comment || execId.substring(0, 8);
+          const execution = executions.find((e) => e.id === execId);
+          const dataKey = getExecDataKey(execution, execId);
+
           let sum = 0;
           let cnt = 0;
           group.forEach((d: ScoreGraphPoint) => {
-            const v = d[execName];
+            const v = d[dataKey] as number | undefined;
             if (typeof v === 'number') {
               sum += v;
               cnt += 1;
             }
           });
-          entry[execName] = cnt > 0 ? sum / cnt : null;
+          entry[dataKey] = cnt > 0 ? sum / cnt : null;
         });
 
         agg.push(entry);

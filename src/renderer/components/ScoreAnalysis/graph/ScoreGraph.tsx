@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import type { TestExecution } from '../../../../schemas/execution';
 import type { AnalysisResponse } from '../../../../schemas/analysis';
-import { useChartDataset, type ScoreGraphPoint } from '../hooks/useScoreGraphData';
+import { useChartDataset, type ScoreGraphPoint, getExecDataKey } from '../hooks/useScoreGraphData';
 import { useInputFilter } from '../hooks/useGraphData';
 
 interface ScoreGraphProps {
@@ -205,13 +205,15 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
             />
             <Legend />
             {selectedExecutionIds.map((execId, index) => {
-              const execName =
-                executions.find((e) => e.id === execId)?.comment || execId.substring(0, 8);
+              const execution = executions.find((e) => e.id === execId);
+              const execName = execution?.comment || execId.substring(0, 8);
+              const dataKey = getExecDataKey(execution, execId);
+
               return (
                 <Line
                   key={execId}
                   type="monotone"
-                  dataKey={execName}
+                  dataKey={dataKey}
                   stroke={colors[index % colors.length]}
                   strokeWidth={2}
                   dot={{ r: 3 }}
