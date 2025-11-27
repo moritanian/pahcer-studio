@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { v4 as uuidv4 } from 'uuid';
+
 import type {
   TestExecution,
   TestExecutionRequest,
@@ -38,7 +38,7 @@ export class ExecutionService extends EventEmitter {
    * テスト実行を開始する
    */
   async startExecution(request: TestExecutionRequest): Promise<string> {
-    const executionId = `${uuidv4()}`;
+    const executionId = await this.generateNextExecutionId();
 
     // WorkspaceRepository からワークスペースを取得
     const workspace = this.workspaceRepository.getWorkspace();
@@ -277,6 +277,28 @@ export class ExecutionService extends EventEmitter {
       // フォールバック
       await this.updateExecutionStatus(executionId, status);
     }
+  }
+
+  /**
+   * 次の実行IDを生成する (id_xxxx形式)
+   */
+  private async generateNextExecutionId(): Promise<string> {
+    const executions = await this.executionRepository.findAll();
+    let maxId = 0;
+    const idPattern = /^id_(\d+)$/;
+
+    for (const execution of executions) {
+      const match = execution.id.match(idPattern);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxId) {
+          maxId = num;
+        }
+      }
+    }
+
+    const nextId = maxId + 1;
+    return `id_${nextId.toString().padStart(4, '0')}`;
   }
 
   private logProcessOutput(executionId: string, output: string, level: 'info' | 'error') {
