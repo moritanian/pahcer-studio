@@ -84,7 +84,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
       key: 'score',
       label: 'スコア',
       minWidth: 80,
-      tooltip: '平均スコア (指数表記)',
+      tooltip: '平均スコア',
       icon: <AssessmentIcon fontSize="small" sx={{ opacity: 0.6 }} />,
     },
     {
@@ -301,7 +301,9 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                   />
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>
-                  {execution.averageScore ? execution.averageScore.toExponential(2) : '-'}
+                  {execution.averageScore
+                    ? Math.round(execution.averageScore).toLocaleString('ja-JP')
+                    : '-'}
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>
                   {execution.averageRelativeScore !== undefined &&
