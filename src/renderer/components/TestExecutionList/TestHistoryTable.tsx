@@ -28,6 +28,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import TimelapseIcon from '@mui/icons-material/Timelapse';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
+import { apiClient } from '../../api/client';
 
 interface TestHistoryTableProps {
   executions: TestExecution[];
@@ -151,7 +152,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
 
     setDeleting(true);
     try {
-      await window.electronAPI.execution.deleteExecution(executionToDelete.id);
+      await apiClient.execution.delete(executionToDelete.id);
       setDeleteDialogOpen(false);
       setExecutionToDelete(null);
       // 削除成功後にリフレッシュ

@@ -4,14 +4,14 @@ import { z } from 'zod';
 export const InputFeatureSchema = z.object({
   seed: z.number(),
   file: z.string(),
-  features: z.record(z.number()), // キーは特徴量名、値は特徴量値
+  features: z.record(z.string(), z.number()), // キーは特徴量名、値は特徴量値
 });
 
 // スコアデータのスキーマ
 export const ScoreDataSchema = z.object({
   id: z.string(),
-  scores: z.record(z.number()), // 実スコア
-  relativeScores: z.record(z.number()).optional(), // 相対スコア (0〜1 など) ★追加
+  scores: z.record(z.string(), z.number()), // 実スコア
+  relativeScores: z.record(z.string(), z.number()).optional(), // 相対スコア (0〜1 など) ★追加
 });
 
 // 分析リクエストのスキーマ

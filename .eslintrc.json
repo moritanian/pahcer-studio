@@ -17,7 +17,8 @@
     "sourceType": "module",
     "ecmaFeatures": {
       "jsx": true
-    }
+    },
+    "project": ["./tsconfig.json", "./src/renderer/tsconfig.json"]
   },
   "plugins": ["react", "@typescript-eslint", "react-hooks"],
   "settings": {
@@ -30,5 +31,5 @@
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "@typescript-eslint/no-explicit-any": "warn"
   },
-  "ignorePatterns": ["dist/**", "node_modules/**", "public/**"]
+  "ignorePatterns": ["dist/**", "node_modules/**", "public/**", "vite.config.ts"]
 }

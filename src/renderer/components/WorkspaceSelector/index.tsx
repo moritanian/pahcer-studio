@@ -17,10 +17,10 @@ import {
   Divider,
   Chip,
 } from '@mui/material';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import DeleteIcon from '@mui/icons-material/Delete';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import type { AppSettings, WorkspaceHistory } from '../../../services/WorkspaceService';
+import { apiClient } from '../../api/client';
 
 interface WorkspaceSelectorProps {
   open: boolean;
@@ -48,7 +48,7 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
 
   const loadHistory = async () => {
     try {
-      const settings = (await window.electronAPI.settings.get()) as AppSettings;
+      const settings = (await apiClient.settings.get()) as AppSettings;
       // projectsフィールドから履歴を取得
       const history = settings.projects || [];
       // 日付順（新しい順）にソート
@@ -62,12 +62,12 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
   const saveHistory = async (newHistory: WorkspaceHistory[]) => {
     try {
       // 現在の設定を取得してマージ（将来的な他の設定項目を保持するため）
-      const currentSettings = (await window.electronAPI.settings.get()) as AppSettings;
+      const currentSettings = (await apiClient.settings.get()) as AppSettings;
       const newSettings: AppSettings = {
         ...currentSettings,
         projects: newHistory,
       };
-      await window.electronAPI.settings.update(newSettings);
+      await apiClient.settings.update(newSettings);
       setHistory(newHistory);
     } catch (error) {
       console.error('Failed to save history:', error);
@@ -106,20 +106,6 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
     return path.startsWith('\\\\wsl$\\') || path.startsWith('\\\\wsl.localhost\\');
   };
 
-  const handleBrowse = async () => {
-    try {
-      const path = await window.electronAPI.dialog.openDirectory();
-      if (path) {
-        setManualPath(path);
-        if (isWslPath(path)) {
-          setManualUseWsl(true);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to open directory dialog:', error);
-    }
-  };
-
   const handleManualSubmit = () => {
     if (manualPath) {
       handleSelect(manualPath, manualUseWsl);
@@ -134,6 +120,10 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
           <Typography variant="subtitle2" color="textSecondary" gutterBottom>
             新しいワークスペースを開く
           </Typography>
+          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
+            ワークスペースのパスを入力してください（例: C:\Projects\MyProject または
+            \\wsl.localhost\Ubuntu\home\user\project）
+          </Typography>
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
             <TextField
               fullWidth
@@ -147,17 +137,9 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
                   setManualUseWsl(true);
                 }
               }}
-              placeholder="C:\Projects\MyProject または ~/projects/my-project"
+              placeholder="C:\Projects\MyProject または \\wsl.localhost\Ubuntu\home\user\project"
               size="small"
             />
-            <Button
-              variant="outlined"
-              onClick={handleBrowse}
-              startIcon={<FolderOpenIcon />}
-              sx={{ whiteSpace: 'nowrap', height: '40px' }}
-            >
-              参照
-            </Button>
           </Box>
           <Box
             sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}

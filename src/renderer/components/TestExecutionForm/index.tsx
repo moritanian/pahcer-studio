@@ -25,6 +25,8 @@ import ErrorIcon from '@mui/icons-material/Error';
 import PendingIcon from '@mui/icons-material/Pending';
 import StopIcon from '@mui/icons-material/Stop';
 import type { TestExecution, TestExecutionRequest, LogMessage } from '../../../schemas/execution';
+import { apiClient } from '../../api/client';
+import { useLogStream } from '../../hooks/useLogStream';
 
 const TestExecutionForm: React.FC = () => {
   // フォームの状態
@@ -57,11 +59,9 @@ const TestExecutionForm: React.FC = () => {
     }
   }, [executionLogs]);
 
-  useEffect(() => {
-    const handleLog = (data: {
-      executionId: string;
-      log: { timestamp: string; message: string };
-    }) => {
+  // useLogStream フックを使用してSSEイベントをリッスン
+  useLogStream({
+    onLog: (data) => {
       // refを使って最新のcurrentExecutionを参照
       const currentExec = currentExecutionRef.current;
       if (currentExec && data.executionId === currentExec.id) {
@@ -73,13 +73,8 @@ const TestExecutionForm: React.FC = () => {
           },
         ]);
       }
-    };
-
-    const handleStatus = (data: {
-      executionId: string;
-      status: string;
-      execution: TestExecution;
-    }) => {
+    },
+    onStatusChange: (data) => {
       const currentExec = currentExecutionRef.current;
       if (currentExec && data.executionId === currentExec.id) {
         setCurrentExecution(data.execution);
@@ -95,18 +90,8 @@ const TestExecutionForm: React.FC = () => {
           setErrorMessage('pahcer実行が失敗しました');
         }
       }
-    };
-
-    // ElectronAPIのイベントリスナーを設定
-    window.electronAPI.execution.onLog(handleLog);
-    window.electronAPI.execution.onStatus(handleStatus);
-
-    return () => {
-      // クリーンアップ
-      window.electronAPI.execution.offLog(handleLog);
-      window.electronAPI.execution.offStatus(handleStatus);
-    };
-  }, []);
+    },
+  });
 
   // フォーム送信ハンドラー
   const handleSubmit = async (e: React.FormEvent) => {
@@ -124,14 +109,14 @@ const TestExecutionForm: React.FC = () => {
         startSeed: startSeed === '' ? 0 : parseInt(startSeed),
       };
 
-      // Electron APIを使用してpahcer実行を開始
-      const response = await window.electronAPI.execution.start(request);
+      // APIクライアントを使用してpahcer実行を開始
+      const response = await apiClient.execution.start(request);
 
       // 成功メッセージの表示
       setSuccessMessage('pahcer実行が開始されました');
 
       // 実行ステータスを取得
-      const execution = await window.electronAPI.execution.getStatus(response.id);
+      const execution = await apiClient.execution.getStatus(response.id);
       setCurrentExecution(execution);
 
       // フォームのリセット
@@ -158,7 +143,7 @@ const TestExecutionForm: React.FC = () => {
     if (!currentExecution) return;
 
     try {
-      await window.electronAPI.execution.stop(currentExecution.id);
+      await apiClient.execution.stop(currentExecution.id);
       setSuccessMessage('pahcer実行を停止しました');
     } catch (error) {
       setErrorMessage('pahcer実行の停止に失敗しました');

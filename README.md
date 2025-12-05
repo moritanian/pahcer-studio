@@ -4,7 +4,7 @@
 
 ![pahcer-studio](img/fig1.png)
 
-terry_u16 さんが開発したテスト実行ツール **pahcer** を活用し、テスト実行・結果管理・分析機能を統合した Electron アプリケーションです。
+terry_u16 さんが開発したテスト実行ツール **pahcer** を活用し、テスト実行・結果管理・分析機能を統合した Web アプリケーションです。
 
 ## 🎯 開発の背景
 
@@ -95,11 +95,13 @@ yarn install
 
 ## 🚀 実行
 
+以下のコマンドでアプリケーションを起動します：
+
 ```bash
-yarn start
+yarn dev
 ```
 
-Electron アプリケーションが起動し、GUI が表示されます。
+ブラウザで `http://localhost:3000` にアクセスすると GUI が表示されます。
 
 # 機能一覧
 

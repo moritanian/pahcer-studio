@@ -6,6 +6,8 @@ import 'allotment/dist/style.css';
 import type { TestExecution } from '../../../schemas/execution';
 import TestHistoryTable from './TestHistoryTable';
 import Visualizer from './Visualizer';
+import { apiClient } from '../../api/client';
+import { useLogStream } from '../../hooks/useLogStream';
 
 const TestExecutionList: React.FC = () => {
   // テスト実行リストの状態
@@ -19,7 +21,7 @@ const TestExecutionList: React.FC = () => {
   // テスト実行リストの取得
   const fetchExecutions = useCallback(async () => {
     try {
-      const response = await window.electronAPI.execution.getAll();
+      const response = await apiClient.execution.getAll();
       setExecutions(response || []);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'テスト実行履歴の取得に失敗しました';
@@ -32,18 +34,14 @@ const TestExecutionList: React.FC = () => {
   // 初回読み込み
   useEffect(() => {
     fetchExecutions();
-
-    // テスト実行のステータスが変更されたらリフレッシュ
-    const handleExecutionUpdate = () => {
-      fetchExecutions();
-    };
-
-    window.electronAPI.execution.onStatus(handleExecutionUpdate);
-
-    return () => {
-      window.electronAPI.execution.offStatus(handleExecutionUpdate);
-    };
   }, [fetchExecutions]);
+
+  // テスト実行のステータスが変更されたらリフレッシュ
+  useLogStream({
+    onStatusChange: () => {
+      fetchExecutions();
+    },
+  });
 
   // テスト実行選択ハンドラー
   const handleExecutionSelect = (execution: TestExecution) => {

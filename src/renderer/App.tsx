@@ -19,6 +19,7 @@ import ScoreAnalysis from './components/ScoreAnalysis';
 import WorkspaceSelector from './components/WorkspaceSelector';
 import type { AppSettings } from '../services/WorkspaceService';
 import type { Workspace } from '../schemas/execution';
+import { apiClient } from './api/client';
 
 // タブパネルのインターフェース
 interface TabPanelProps {
@@ -107,7 +108,7 @@ function App() {
   useEffect(() => {
     const initWorkspace = async () => {
       try {
-        const settings = (await window.electronAPI.settings.get()) as AppSettings;
+        const settings = (await apiClient.settings.get()) as AppSettings;
         const history = settings.projects;
         if (history && history.length > 0) {
           // 最新の履歴（最初の要素）を選択
@@ -115,7 +116,7 @@ function App() {
           setCurrentWorkspace({ targetDirectory: latest.path, useWsl: latest.useWsl });
 
           // バックエンドにワークスペースを設定
-          await window.electronAPI.workspace.set({
+          await apiClient.workspace.set({
             targetDirectory: latest.path,
             useWsl: latest.useWsl,
           });
@@ -144,7 +145,7 @@ function App() {
 
     // バックエンドにワークスペース変更を通知
     try {
-      await window.electronAPI.workspace.set({ targetDirectory: path, useWsl });
+      await apiClient.workspace.set({ targetDirectory: path, useWsl });
     } catch (error) {
       console.error('Failed to set workspace:', error);
     }

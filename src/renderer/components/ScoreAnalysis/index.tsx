@@ -10,6 +10,8 @@ import type {
 import AnalysisSettings from './AnalysisSettings';
 import ExecutionSelectionTable from './ExecutionSelectionTable';
 import AnalysisChart from './AnalysisChart';
+import { apiClient } from '../../api/client';
+import { useLogStream } from '../../hooks/useLogStream';
 
 const ScoreAnalysis: React.FC = () => {
   // グローバル状態管理
@@ -32,7 +34,7 @@ const ScoreAnalysis: React.FC = () => {
     const loadSettings = async () => {
       try {
         // --- (1) 設定を取得 -----------------------------
-        const settings = await window.electronAPI.analysis.getSettings();
+        const settings = await apiClient.analysis.getSettings();
 
         if (settings.featureFormat) {
           setFeatureFormat(settings.featureFormat);
@@ -48,7 +50,7 @@ const ScoreAnalysis: React.FC = () => {
     const loadExecutions = async () => {
       try {
         setExecutionsLoading(true);
-        const executionsList = await window.electronAPI.execution.getAll();
+        const executionsList = await apiClient.execution.getAll();
 
         if (executionsList && Array.isArray(executionsList)) {
           const completedExecutions = executionsList.filter((e) => e.status === 'COMPLETED');
@@ -69,8 +71,7 @@ const ScoreAnalysis: React.FC = () => {
   /* =====================================================
    * 2. 分析データの取得ロジック
    *    executions が揃ってから呼び出されることを想定
-   *    window.electronAPI.analysis.analyze を介して
-   *    バックエンドに分析を依頼する
+   *    API クライアントを介してバックエンドに分析を依頼する
    * ===================================================== */
   const fetchAnalysisData = useCallback(async () => {
     if (!featureFormat) {
@@ -89,7 +90,7 @@ const ScoreAnalysis: React.FC = () => {
           featureFormat,
         };
 
-        const response = await window.electronAPI.analysis.analyze(request);
+        const response = await apiClient.analysis.analyze(request);
         setAnalysisResult(response);
       }
     } catch (error) {
@@ -110,11 +111,15 @@ const ScoreAnalysis: React.FC = () => {
    * 2. テスト実行ステータス監視
    *    テスト実行の完了を検知して実行リストを更新
    * ===================================================== */
-  useEffect(() => {
-    const handleStatus = async () => {
+  /* =====================================================
+   * 2. テスト実行ステータス監視
+   *    テスト実行の完了を検知して実行リストを更新
+   * ===================================================== */
+  useLogStream({
+    onStatusChange: async () => {
       // テスト実行が完了したら実行リストを再取得
       try {
-        const executionsList = await window.electronAPI.execution.getAll();
+        const executionsList = await apiClient.execution.getAll();
         if (executionsList && Array.isArray(executionsList)) {
           const completedExecutions = executionsList.filter((e) => e.status === 'COMPLETED');
           setExecutions(completedExecutions);
@@ -122,15 +127,8 @@ const ScoreAnalysis: React.FC = () => {
       } catch (error) {
         console.error('実行リストの更新に失敗しました:', error);
       }
-    };
-
-    window.electronAPI.execution.onStatus(handleStatus);
-
-    return () => {
-      // クリーンアップ（イベント解除）
-      window.electronAPI.execution.offStatus(handleStatus);
-    };
-  }, []);
+    },
+  });
 
   /* =====================================================
    * 3. キャッシュ更新＆再フェッチ
@@ -150,7 +148,7 @@ const ScoreAnalysis: React.FC = () => {
         featureFormat,
       };
 
-      const result = await window.electronAPI.analysis.updateCache(requestData);
+      const result = await apiClient.analysis.updateCache(requestData);
 
       if (result.successful) {
         setError(null);
@@ -159,7 +157,7 @@ const ScoreAnalysis: React.FC = () => {
         await fetchAnalysisData();
 
         // ★ 永続化: 入力フォーマットを保存
-        await window.electronAPI.analysis.saveSettings(featureFormat);
+        await apiClient.analysis.saveSettings(featureFormat);
 
         // 成功時に選択をクリア
         setSelectedExecutionIds([]);
