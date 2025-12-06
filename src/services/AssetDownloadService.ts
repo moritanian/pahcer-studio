@@ -67,6 +67,17 @@ export class AssetDownloadService {
       }
     });
 
+    // Extract .js files from HTML string literals (e.g., worker scripts like "gif.worker.js")
+    const jsLiteralRegex = /['"`]([^'"`\s]+?\.(?:worker\.)?js)['"`]/g;
+    let mJs: RegExpExecArray | null;
+    while ((mJs = jsLiteralRegex.exec(htmlText)) !== null) {
+      const jsFile = mJs[1];
+      // Skip URLs and paths that are too long
+      if (!jsFile.includes('://') && !jsFile.startsWith('//') && jsFile.length < 100) {
+        jsUrls.add(jsFile);
+      }
+    }
+
     for (const jsUrlRaw of jsUrls) {
       await this.downloadJsAsset(jsUrlRaw, baseDirUrl, 0);
     }
@@ -180,6 +191,20 @@ export class AssetDownloadService {
       let m: RegExpExecArray | null;
       while ((m = wasmRegex.exec(jsText)) !== null) {
         await this.downloadWasmAsset(m[1], baseDirUrl);
+      }
+
+      // Worker scripts and other .js files in string literals
+      const jsLiteralRegex = /['"`]([^'"`\s]+?\.(?:worker\.)?js)['"`]/g;
+      while ((m = jsLiteralRegex.exec(jsText)) !== null) {
+        const jsFile = m[1];
+        // Skip URLs and very long strings
+        if (!jsFile.includes('://') && !jsFile.startsWith('//') && jsFile.length < 100) {
+          try {
+            await this.downloadJsAsset(jsFile, path.dirname(absUrl) + '/', depth + 1);
+          } catch {
+            // ignore
+          }
+        }
       }
 
       // imports (relative)

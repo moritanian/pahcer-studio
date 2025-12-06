@@ -415,7 +415,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
                   width="100%"
                   height="100%"
                   style={{ border: 'none' }}
-                  sandbox="allow-scripts allow-same-origin"
+                  sandbox="allow-scripts allow-same-origin allow-downloads"
                 />
               </Box>
             </Box>
