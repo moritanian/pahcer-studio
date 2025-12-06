@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Button,
   CardContent,
@@ -60,21 +60,22 @@ const TestExecutionForm: React.FC = () => {
   }, [executionLogs]);
 
   // useLogStream フックを使用してSSEイベントをリッスン
-  useLogStream({
-    onLog: (data) => {
-      // refを使って最新のcurrentExecutionを参照
-      const currentExec = currentExecutionRef.current;
-      if (currentExec && data.executionId === currentExec.id) {
-        setExecutionLogs((logs) => [
-          ...logs,
-          {
-            timestamp: new Date(data.log.timestamp).toLocaleTimeString(),
-            message: data.log.message,
-          },
-        ]);
-      }
-    },
-    onStatusChange: (data) => {
+  const handleLog = useCallback((data: { executionId: string; log: LogMessage }) => {
+    // refを使って最新のcurrentExecutionを参照
+    const currentExec = currentExecutionRef.current;
+    if (currentExec && data.executionId === currentExec.id) {
+      setExecutionLogs((logs) => [
+        ...logs,
+        {
+          timestamp: new Date(data.log.timestamp).toLocaleTimeString(),
+          message: data.log.message,
+        },
+      ]);
+    }
+  }, []);
+
+  const handleStatusChange = useCallback(
+    (data: { executionId: string; status: string; execution: TestExecution }) => {
       const currentExec = currentExecutionRef.current;
       if (currentExec && data.executionId === currentExec.id) {
         setCurrentExecution(data.execution);
@@ -91,6 +92,12 @@ const TestExecutionForm: React.FC = () => {
         }
       }
     },
+    [],
+  );
+
+  useLogStream({
+    onLog: handleLog,
+    onStatusChange: handleStatusChange,
   });
 
   // フォーム送信ハンドラー

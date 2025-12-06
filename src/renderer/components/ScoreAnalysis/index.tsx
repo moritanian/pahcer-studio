@@ -111,23 +111,21 @@ const ScoreAnalysis: React.FC = () => {
    * 2. テスト実行ステータス監視
    *    テスト実行の完了を検知して実行リストを更新
    * ===================================================== */
-  /* =====================================================
-   * 2. テスト実行ステータス監視
-   *    テスト実行の完了を検知して実行リストを更新
-   * ===================================================== */
-  useLogStream({
-    onStatusChange: async () => {
-      // テスト実行が完了したら実行リストを再取得
-      try {
-        const executionsList = await apiClient.execution.getAll();
-        if (executionsList && Array.isArray(executionsList)) {
-          const completedExecutions = executionsList.filter((e) => e.status === 'COMPLETED');
-          setExecutions(completedExecutions);
-        }
-      } catch (error) {
-        console.error('実行リストの更新に失敗しました:', error);
+  const handleStatusChange = useCallback(async () => {
+    // テスト実行が完了したら実行リストを再取得
+    try {
+      const executionsList = await apiClient.execution.getAll();
+      if (executionsList && Array.isArray(executionsList)) {
+        const completedExecutions = executionsList.filter((e) => e.status === 'COMPLETED');
+        setExecutions(completedExecutions);
       }
-    },
+    } catch (error) {
+      console.error('実行リストの更新に失敗しました:', error);
+    }
+  }, []);
+
+  useLogStream({
+    onStatusChange: handleStatusChange,
   });
 
   /* =====================================================

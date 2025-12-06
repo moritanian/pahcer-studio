@@ -37,10 +37,12 @@ const TestExecutionList: React.FC = () => {
   }, [fetchExecutions]);
 
   // テスト実行のステータスが変更されたらリフレッシュ
+  const handleStatusChange = useCallback(() => {
+    fetchExecutions();
+  }, [fetchExecutions]);
+
   useLogStream({
-    onStatusChange: () => {
-      fetchExecutions();
-    },
+    onStatusChange: handleStatusChange,
   });
 
   // テスト実行選択ハンドラー
