@@ -125,8 +125,27 @@ phst terminate
 # pahcer テストを実行（サーバーが起動していない場合は自動で起動）
 phst run
 
+# テスト実行のオプション例
+phst run -n 50                    # 50ケースだけ実行
+phst run -n 50 -s 100             # シード100から50ケース実行
+phst run --shuffle                # テストケースの順序をシャッフル
+phst run -c "fix: improve algo"   # コメント付きで実行
+phst run --freeze                 # ベストスコアを固定
+
 # ヘルプを表示
 phst --help
+phst run --help  # run コマンドのオプション一覧
+```
+
+**`phst run` コマンドのオプション:**
+
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `-n, --count <number>` | 実行するテストケース数 | 100 |
+| `-s, --seed <number>` | 開始シード値 | 0 |
+| `-c, --comment <string>` | 実行に付けるコメント | なし |
+| `--shuffle` | テストケースの順序をシャッフル | false |
+| `--freeze` | ベストスコアを固定 | false |
 ```
 
 ### 開発者向け（開発環境）

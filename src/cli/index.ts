@@ -202,23 +202,135 @@ program
     }
   });
 
+// Run pahcer tests
+async function runTests(options: {
+  count?: number;
+  seed?: number;
+  comment?: string;
+  shuffle?: boolean;
+  freeze?: boolean;
+}): Promise<void> {
+  const isRunning = await isServerRunning();
+
+  if (!isRunning) {
+    console.log('Server not running, starting server first...');
+    await startServer(false);
+  }
+
+  // Check if pahcer_config.toml exists in current directory
+  const configPath = path.join(process.cwd(), 'pahcer_config.toml');
+  if (!fs.existsSync(configPath)) {
+    console.error('Error: pahcer_config.toml not found in current directory');
+    console.error(
+      'Please run this command from your AHC project directory (where pahcer is initialized)',
+    );
+    process.exit(1);
+  }
+
+  console.log(`Found pahcer configuration at: ${configPath}`);
+
+  // Set workspace
+  const workspaceData = {
+    targetDirectory: process.cwd(),
+    useWsl: false,
+  };
+
+  try {
+    const workspaceResponse = await fetch(`${SERVER_URL}/api/workspace/set`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workspaceData),
+    });
+
+    if (!workspaceResponse.ok) {
+      console.error('Failed to set workspace');
+      process.exit(1);
+    }
+
+    console.log('Workspace configured');
+  } catch (error) {
+    console.error('Error setting workspace:', error);
+    process.exit(1);
+  }
+
+  // Start test execution
+  const executionRequest = {
+    comment: options.comment || null,
+    shuffle: options.shuffle || false,
+    freezeBestScores: options.freeze || false,
+    testCaseCount: options.count || 100,
+    startSeed: options.seed || 0,
+  };
+
+  try {
+    console.log('Starting pahcer test execution...');
+    const response = await fetch(`${SERVER_URL}/api/execution/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(executionRequest),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Failed to start execution:', errorData.error || 'Unknown error');
+      process.exit(1);
+    }
+
+    const { id } = await response.json();
+    console.log(`Test execution started (ID: ${id})`);
+    console.log(`View progress at: ${SERVER_URL}`);
+
+    // Poll for completion
+    let completed = false;
+    while (!completed) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      const statusResponse = await fetch(`${SERVER_URL}/api/execution/status/${id}`);
+      if (!statusResponse.ok) {
+        console.error('Failed to get execution status');
+        break;
+      }
+
+      const status = await statusResponse.json();
+
+      if (status.status === 'COMPLETED') {
+        completed = true;
+        console.log('\nTest execution completed!');
+        console.log(`Average score: ${status.averageScore?.toFixed(2) || 'N/A'}`);
+        console.log(`Average relative score: ${status.averageRelativeScore?.toFixed(2) || 'N/A'}%`);
+        console.log(`Accepted: ${status.acceptedCount}/${status.totalCount}`);
+      } else if (status.status === 'FAILED' || status.status === 'CANCELLED') {
+        completed = true;
+        console.log(`\nTest execution ${status.status.toLowerCase()}`);
+      } else {
+        // Still running, show progress
+        process.stdout.write('.');
+      }
+    }
+  } catch (error) {
+    console.error('Error running tests:', error);
+    process.exit(1);
+  }
+}
+
 // Run command
 program
   .command('run')
   .description('Run pahcer tests (starts server if not running)')
-  .action(async () => {
+  .option('-n, --count <number>', 'Number of test cases to run', '100')
+  .option('-s, --seed <number>', 'Starting seed value', '0')
+  .option('-c, --comment <string>', 'Comment for this execution')
+  .option('--shuffle', 'Shuffle test case order', false)
+  .option('--freeze', 'Freeze best scores', false)
+  .action(async (options) => {
     try {
-      const isRunning = await isServerRunning();
-
-      if (!isRunning) {
-        console.log('Server not running, starting server first...');
-        await startServer(false);
-      }
-
-      console.log('Running pahcer tests...');
-      // TODO: Implement test execution logic
-      // This would typically call the /api/execution/start endpoint
-      console.log('Test execution not yet implemented');
+      await runTests({
+        count: parseInt(options.count, 10),
+        seed: parseInt(options.seed, 10),
+        comment: options.comment,
+        shuffle: options.shuffle,
+        freeze: options.freeze,
+      });
     } catch (error) {
       console.error('Error running tests:', error);
       process.exit(1);
