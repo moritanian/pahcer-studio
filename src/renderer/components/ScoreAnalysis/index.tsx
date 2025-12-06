@@ -11,7 +11,7 @@ import AnalysisSettings from './AnalysisSettings';
 import ExecutionSelectionTable from './ExecutionSelectionTable';
 import AnalysisChart from './AnalysisChart';
 import { apiClient } from '../../api/client';
-import { useLogStream } from '../../hooks/useLogStream';
+import { useExecutionEvents } from '../../contexts/EventSourceContext';
 
 const ScoreAnalysis: React.FC = () => {
   // グローバル状態管理
@@ -124,7 +124,7 @@ const ScoreAnalysis: React.FC = () => {
     }
   }, []);
 
-  useLogStream({
+  useExecutionEvents({
     onStatusChange: handleStatusChange,
   });
 

@@ -20,6 +20,7 @@ import WorkspaceSelector from './components/WorkspaceSelector';
 import type { AppSettings } from '../services/WorkspaceService';
 import type { Workspace } from '../schemas/execution';
 import { apiClient } from './api/client';
+import { EventSourceProvider } from './contexts/EventSourceContext';
 
 // タブパネルのインターフェース
 interface TabPanelProps {
@@ -154,82 +155,84 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ flexGrow: 1 }}>
-        <AppBar position="static">
-          <Box sx={{ display: 'flex', alignItems: 'center', pr: 2 }}>
-            <Typography
-              variant="subtitle1"
-              component="div"
-              sx={{
-                px: 2,
-                py: 1,
-                fontWeight: 'bold',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              pahcer-studio
-            </Typography>
-            <Tabs
-              value={tabIndex}
-              onChange={handleTabChange}
-              aria-label="basic tabs example"
-              textColor="inherit"
-              variant="standard"
-              sx={{
-                borderLeft: '1px solid rgba(255, 255, 255, 0.2)',
-                flexGrow: 1,
-              }}
-            >
-              <Tab label="テスト実行" sx={{ borderTopLeftRadius: '4px' }} />
-              <Tab label="テスト履歴" />
-              <Tab label="スコア分析" />
-            </Tabs>
-
-            {/* ワークスペース表示と変更ボタン */}
-            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="body2" sx={{ opacity: 0.8, mr: 1 }}>
-                {currentWorkspace ? currentWorkspace.targetDirectory : 'ワークスペース未選択'}
-                {currentWorkspace?.useWsl && ' (WSL)'}
+      <EventSourceProvider>
+        <Box sx={{ flexGrow: 1 }}>
+          <AppBar position="static">
+            <Box sx={{ display: 'flex', alignItems: 'center', pr: 2 }}>
+              <Typography
+                variant="subtitle1"
+                component="div"
+                sx={{
+                  px: 2,
+                  py: 1,
+                  fontWeight: 'bold',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                pahcer-studio
               </Typography>
-              <Tooltip title="ワークスペースを変更">
-                <Button
-                  color="inherit"
-                  variant="outlined"
-                  size="small"
-                  startIcon={<FolderOpenIcon />}
-                  onClick={() => setIsSelectorOpen(true)}
-                  sx={{ borderColor: 'rgba(255,255,255,0.5)' }}
-                >
-                  変更
-                </Button>
-              </Tooltip>
+              <Tabs
+                value={tabIndex}
+                onChange={handleTabChange}
+                aria-label="basic tabs example"
+                textColor="inherit"
+                variant="standard"
+                sx={{
+                  borderLeft: '1px solid rgba(255, 255, 255, 0.2)',
+                  flexGrow: 1,
+                }}
+              >
+                <Tab label="テスト実行" sx={{ borderTopLeftRadius: '4px' }} />
+                <Tab label="テスト履歴" />
+                <Tab label="スコア分析" />
+              </Tabs>
+
+              {/* ワークスペース表示と変更ボタン */}
+              <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" sx={{ opacity: 0.8, mr: 1 }}>
+                  {currentWorkspace ? currentWorkspace.targetDirectory : 'ワークスペース未選択'}
+                  {currentWorkspace?.useWsl && ' (WSL)'}
+                </Typography>
+                <Tooltip title="ワークスペースを変更">
+                  <Button
+                    color="inherit"
+                    variant="outlined"
+                    size="small"
+                    startIcon={<FolderOpenIcon />}
+                    onClick={() => setIsSelectorOpen(true)}
+                    sx={{ borderColor: 'rgba(255,255,255,0.5)' }}
+                  >
+                    変更
+                  </Button>
+                </Tooltip>
+              </Box>
             </Box>
-          </Box>
-        </AppBar>
+          </AppBar>
 
-        {/* ワークスペース選択時のメインコンテンツ */}
-        {currentWorkspace ? (
-          <>
-            <TabPanel value={tabIndex} index={0}>
-              <TestExecutionForm />
-            </TabPanel>
-            <TabPanel value={tabIndex} index={1}>
-              <TestExecutionList key={currentWorkspace.targetDirectory} />
-            </TabPanel>
-            <TabPanel value={tabIndex} index={2}>
-              <ScoreAnalysis key={currentWorkspace.targetDirectory} />
-            </TabPanel>
-          </>
-        ) : null}
+          {/* ワークスペース選択時のメインコンテンツ */}
+          {currentWorkspace ? (
+            <>
+              <TabPanel value={tabIndex} index={0}>
+                <TestExecutionForm />
+              </TabPanel>
+              <TabPanel value={tabIndex} index={1}>
+                <TestExecutionList key={currentWorkspace.targetDirectory} />
+              </TabPanel>
+              <TabPanel value={tabIndex} index={2}>
+                <ScoreAnalysis key={currentWorkspace.targetDirectory} />
+              </TabPanel>
+            </>
+          ) : null}
 
-        {/* ワークスペース選択ダイアログ */}
-        <WorkspaceSelector
-          open={isSelectorOpen || !currentWorkspace}
-          onSelect={handleWorkspaceSelect}
-          onClose={currentWorkspace ? () => setIsSelectorOpen(false) : undefined}
-          currentPath={currentWorkspace?.targetDirectory}
-        />
-      </Box>
+          {/* ワークスペース選択ダイアログ */}
+          <WorkspaceSelector
+            open={isSelectorOpen || !currentWorkspace}
+            onSelect={handleWorkspaceSelect}
+            onClose={currentWorkspace ? () => setIsSelectorOpen(false) : undefined}
+            currentPath={currentWorkspace?.targetDirectory}
+          />
+        </Box>
+      </EventSourceProvider>
     </ThemeProvider>
   );
 }

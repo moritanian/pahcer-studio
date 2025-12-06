@@ -7,7 +7,7 @@ import type { TestExecution } from '../../../schemas/execution';
 import TestHistoryTable from './TestHistoryTable';
 import Visualizer from './Visualizer';
 import { apiClient } from '../../api/client';
-import { useLogStream } from '../../hooks/useLogStream';
+import { useExecutionEvents } from '../../contexts/EventSourceContext';
 
 const TestExecutionList: React.FC = () => {
   // テスト実行リストの状態
@@ -41,7 +41,7 @@ const TestExecutionList: React.FC = () => {
     fetchExecutions();
   }, [fetchExecutions]);
 
-  useLogStream({
+  useExecutionEvents({
     onStatusChange: handleStatusChange,
   });
 

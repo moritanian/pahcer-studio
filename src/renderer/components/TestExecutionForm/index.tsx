@@ -26,7 +26,7 @@ import PendingIcon from '@mui/icons-material/Pending';
 import StopIcon from '@mui/icons-material/Stop';
 import type { TestExecution, TestExecutionRequest, LogMessage } from '../../../schemas/execution';
 import { apiClient } from '../../api/client';
-import { useLogStream } from '../../hooks/useLogStream';
+import { useExecutionEvents } from '../../contexts/EventSourceContext';
 
 const TestExecutionForm: React.FC = () => {
   // フォームの状態
@@ -95,7 +95,7 @@ const TestExecutionForm: React.FC = () => {
     [],
   );
 
-  useLogStream({
+  useExecutionEvents({
     onLog: handleLog,
     onStatusChange: handleStatusChange,
   });
