@@ -97,17 +97,37 @@ yarn install
 
 ### ユーザー向け（本番環境）
 
-通常利用する場合は、以下のコマンドでアプリケーションをビルド・起動します：
+#### CLI ツールを使う方法（推奨）
+
+初回のみ、ビルドとグローバルインストールを行います：
 
 ```bash
-# 初回のみ: ビルド
+# pahcer-studio ディレクトリで実行
 yarn build
-
-# アプリケーションの起動
-yarn start
+npm install -g .
 ```
 
-ブラウザで `http://localhost:3000` にアクセスすると GUI が表示されます。
+その後、**どのディレクトリからでも**以下のコマンドが使用できます：
+
+```bash
+# AHC プロジェクトのディレクトリ（pahcer-studio の親ディレクトリ）で実行
+cd /path/to/your-ahc-project
+
+# サーバーを起動してブラウザを開く（バックグラウンドで実行）
+phst launch
+
+# サーバーを起動（ブラウザは開かない）
+phst launch --no-browser
+
+# サーバーを終了
+phst terminate
+
+# pahcer テストを実行（サーバーが起動していない場合は自動で起動）
+phst run
+
+# ヘルプを表示
+phst --help
+```
 
 ### 開発者向け（開発環境）
 

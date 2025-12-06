@@ -1,0 +1,243 @@
+#!/usr/bin/env node
+import { Command } from 'commander';
+import { spawn } from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
+
+// Open URL in default browser (cross-platform)
+async function openBrowser(url: string): Promise<void> {
+  const platform = process.platform;
+  let command: string;
+
+  if (platform === 'win32') {
+    command = `start ${url}`;
+  } else if (platform === 'darwin') {
+    command = `open ${url}`;
+  } else {
+    command = `xdg-open ${url}`;
+  }
+
+  return new Promise((resolve, reject) => {
+    spawn(command, { shell: true, stdio: 'ignore', detached: true }).on('error', reject).unref();
+    resolve();
+  });
+}
+
+const program = new Command();
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const HOST = process.env.HOST || '127.0.0.1';
+const SERVER_URL = `http://${HOST}:${PORT}`;
+
+// PID file path (in user's home directory or temp)
+const PID_FILE = path.join(process.env.TEMP || process.env.TMPDIR || '/tmp', 'pahcer-studio.pid');
+
+// Check if server is running
+async function isServerRunning(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1000);
+    await fetch(`${SERVER_URL}/api/settings`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Start the server
+async function startServer(shouldOpenBrowser: boolean = true): Promise<void> {
+  const isRunning = await isServerRunning();
+
+  if (isRunning) {
+    console.log('Server is already running');
+    if (shouldOpenBrowser) {
+      console.log(`Opening browser at ${SERVER_URL}`);
+      await openBrowser(SERVER_URL);
+    }
+    return;
+  }
+
+  console.log('Starting server...');
+
+  // Find the root directory (where package.json is located)
+  // When installed globally, __dirname is in node_modules/.../dist/cli
+  // When run locally, __dirname is in dist/cli
+  let rootDir = path.resolve(__dirname, '../..');
+
+  // Check if package.json exists, if not, try to find it
+  if (!fs.existsSync(path.join(rootDir, 'package.json'))) {
+    // Might be installed globally, look for it in the current working directory
+    rootDir = process.cwd();
+
+    // Check if pahcer-studio folder exists in current directory
+    const pahcerStudioDir = path.join(rootDir, 'pahcer-studio');
+    if (
+      fs.existsSync(pahcerStudioDir) &&
+      fs.existsSync(path.join(pahcerStudioDir, 'package.json'))
+    ) {
+      rootDir = pahcerStudioDir;
+    }
+  }
+
+  // Always use production build
+  const serverPath = path.join(rootDir, 'dist/server/server.js');
+  if (!fs.existsSync(serverPath)) {
+    console.error(
+      'Error: Server not built. Please run "yarn build" in the pahcer-studio directory first.',
+    );
+    console.error(`Expected server at: ${serverPath}`);
+    process.exit(1);
+  }
+
+  const serverProcess = spawn('node', [serverPath], {
+    cwd: rootDir,
+    stdio: 'ignore',
+    detached: true,
+    env: { ...process.env, NODE_ENV: 'production' },
+    shell: false,
+  });
+
+  // Handle process errors
+  serverProcess.on('error', (err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+
+  // Detach the child process so it continues running after CLI exits
+  serverProcess.unref();
+
+  // Save PID to file
+  if (serverProcess.pid) {
+    fs.writeFileSync(PID_FILE, serverProcess.pid.toString());
+  } else {
+    console.error('Failed to get server process PID');
+    process.exit(1);
+  }
+
+  // Wait for server to start
+  console.log('Waiting for server to start...');
+  let attempts = 0;
+  const maxAttempts = 30; // 30 seconds
+  while (attempts < maxAttempts) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (await isServerRunning()) {
+      console.log(`Server started at ${SERVER_URL}`);
+      if (shouldOpenBrowser) {
+        console.log('Opening browser...');
+        await openBrowser(SERVER_URL);
+      }
+      return;
+    }
+    attempts++;
+  }
+
+  console.error('Error: Server failed to start within 30 seconds');
+  console.error('Check if port 3000 is already in use or check server logs');
+  try {
+    if (serverProcess.pid) {
+      process.kill(serverProcess.pid, 'SIGTERM');
+    }
+  } catch (err) {
+    // Process may have already exited
+  }
+  // Clean up PID file
+  if (fs.existsSync(PID_FILE)) {
+    fs.unlinkSync(PID_FILE);
+  }
+  process.exit(1);
+}
+
+// Terminate the server
+async function terminateServer(): Promise<void> {
+  if (!fs.existsSync(PID_FILE)) {
+    console.log('No server PID file found. Server may not be running.');
+    return;
+  }
+
+  const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
+
+  try {
+    // Try to kill the process
+    process.kill(pid, 'SIGTERM');
+    console.log(`Terminated server (PID: ${pid})`);
+
+    // Wait a bit and verify it's stopped
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    // Check if still running
+    try {
+      process.kill(pid, 0); // Signal 0 just checks if process exists
+      console.warn('Server may still be running. Try using task manager to force quit.');
+    } catch {
+      // Process doesn't exist anymore, good
+      console.log('Server stopped successfully');
+    }
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') {
+      console.log('Server process not found. It may have already stopped.');
+    } else {
+      console.error('Error terminating server:', error);
+    }
+  } finally {
+    // Clean up PID file
+    if (fs.existsSync(PID_FILE)) {
+      fs.unlinkSync(PID_FILE);
+    }
+  }
+}
+
+// Launch command
+program
+  .command('launch')
+  .description('Launch the pahcer-studio server in background and open browser')
+  .option('--no-browser', 'Do not open browser automatically')
+  .action(async (options) => {
+    try {
+      await startServer(options.browser !== false);
+      // Server is running in background, exit the CLI
+      process.exit(0);
+    } catch (error) {
+      console.error('Error launching server:', error);
+      process.exit(1);
+    }
+  });
+
+// Run command
+program
+  .command('run')
+  .description('Run pahcer tests (starts server if not running)')
+  .action(async () => {
+    try {
+      const isRunning = await isServerRunning();
+
+      if (!isRunning) {
+        console.log('Server not running, starting server first...');
+        await startServer(false);
+      }
+
+      console.log('Running pahcer tests...');
+      // TODO: Implement test execution logic
+      // This would typically call the /api/execution/start endpoint
+      console.log('Test execution not yet implemented');
+    } catch (error) {
+      console.error('Error running tests:', error);
+      process.exit(1);
+    }
+  });
+
+// Terminate command
+program
+  .command('terminate')
+  .description('Terminate the running pahcer-studio server')
+  .action(async () => {
+    try {
+      await terminateServer();
+    } catch (error) {
+      console.error('Error terminating server:', error);
+      process.exit(1);
+    }
+  });
+
+program.name('pahcer-studio').description('CLI tool for pahcer-studio').version('0.1.0');
+
+program.parse(process.argv);

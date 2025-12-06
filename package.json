@@ -2,6 +2,9 @@
   "name": "pacher-studio",
   "version": "0.1.0",
   "description": "pacherでAHCのテストケース実行を支援するためのWebアプリです",
+  "bin": {
+    "phst": "./dist/cli/index.js"
+  },
   "scripts": {
     "dev": "yarn server",
     "dev:renderer": "vite",
@@ -11,7 +14,11 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --check \"./src/**/*.{ts,tsx,js,jsx,json,css,html}\"",
-    "format:fix": "prettier --write \"./src/**/*.{ts,tsx,js,jsx,json,css,html}\""
+    "format:fix": "prettier --write \"./src/**/*.{ts,tsx,js,jsx,json,css,html}\"",
+    "cli": "node dist/cli/index.js",
+    "cli:launch": "node dist/cli/index.js launch",
+    "cli:terminate": "node dist/cli/index.js terminate",
+    "cli:run": "node dist/cli/index.js run"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -20,6 +27,7 @@
     "@mui/material": "^7.1.1",
     "allotment": "^1.20.4",
     "cheerio": "^1.1.0",
+    "commander": "^14.0.2",
     "express": "^5.2.1",
     "glob": "^11.0.3",
     "mathjs": "^14.5.3",
