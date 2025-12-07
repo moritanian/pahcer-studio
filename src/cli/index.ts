@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import { EventSource } from 'eventsource';
 
 // Open URL in default browser (cross-platform)
 async function openBrowser(url: string): Promise<void> {
@@ -227,8 +228,6 @@ async function runTests(options: {
     process.exit(1);
   }
 
-  console.log(`Found pahcer configuration at: ${configPath}`);
-
   // Set workspace
   const workspaceData = {
     targetDirectory: process.cwd(),
@@ -246,8 +245,6 @@ async function runTests(options: {
       console.error('Failed to set workspace');
       process.exit(1);
     }
-
-    console.log('Workspace configured');
   } catch (error) {
     console.error('Error setting workspace:', error);
     process.exit(1);
@@ -263,7 +260,6 @@ async function runTests(options: {
   };
 
   try {
-    console.log('Starting pahcer test execution...');
     const response = await fetch(`${SERVER_URL}/api/execution/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -278,35 +274,83 @@ async function runTests(options: {
 
     const { id } = await response.json();
     console.log(`Test execution started (ID: ${id})`);
-    console.log(`View progress at: ${SERVER_URL}`);
 
-    // Poll for completion
-    let completed = false;
-    while (!completed) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Flag to prevent duplicate completion handling
+    let isCompleted = false;
 
-      const statusResponse = await fetch(`${SERVER_URL}/api/execution/status/${id}`);
-      if (!statusResponse.ok) {
-        console.error('Failed to get execution status');
-        break;
-      }
+    const handleCompletion = (status: any, execution: any) => {
+      if (isCompleted) return;
+      isCompleted = true;
 
-      const status = await statusResponse.json();
-
-      if (status.status === 'COMPLETED') {
-        completed = true;
+      if (status === 'COMPLETED') {
+        const exec = execution;
         console.log('\nTest execution completed!');
-        console.log(`Average score: ${status.averageScore?.toFixed(2) || 'N/A'}`);
-        console.log(`Average relative score: ${status.averageRelativeScore?.toFixed(2) || 'N/A'}%`);
-        console.log(`Accepted: ${status.acceptedCount}/${status.totalCount}`);
-      } else if (status.status === 'FAILED' || status.status === 'CANCELLED') {
-        completed = true;
-        console.log(`\nTest execution ${status.status.toLowerCase()}`);
+        console.log(`Average score: ${exec.averageScore?.toFixed(2) || 'N/A'}`);
+        console.log(`Average relative score: ${exec.averageRelativeScore?.toFixed(2) || 'N/A'}%`);
+        console.log(`Accepted: ${exec.acceptedCount}/${exec.totalCount}`);
       } else {
-        // Still running, show progress
-        process.stdout.write('.');
+        console.log(`\nTest execution ${status.toLowerCase()}`);
       }
-    }
+      process.exit(0);
+    };
+
+    // Start polling in background as a safety measure
+    // This ensures we catch completion even if SSE events are missed or reader blocks
+    const poller = setInterval(async () => {
+      if (isCompleted) {
+        clearInterval(poller);
+        return;
+      }
+      try {
+        const res = await fetch(`${SERVER_URL}/api/execution/status/${id}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(data.status)) {
+            // Wait a moment to allow pending logs to flush via SSE
+            setTimeout(() => {
+              handleCompletion(data.status, data);
+            }, 500);
+          }
+        }
+      } catch (e) {
+        console.error('Polling error:', e);
+      }
+    }, 2000);
+
+    const es = new EventSource(`${SERVER_URL}/api/events`);
+
+    es.addEventListener('execution:log', (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.executionId === id && data.log) {
+          process.stdout.write(data.log.message + '\n');
+        }
+      } catch (e) {
+        console.error('Error handling execution:log event:', e);
+      }
+    });
+
+    es.addEventListener('execution:status', (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.executionId === id && ['COMPLETED', 'FAILED', 'CANCELLED'].includes(data.status)) {
+          // Wait a brief moment for any pending logs
+          setTimeout(() => {
+            handleCompletion(data.status, data.execution);
+            es.close();
+          }, 100);
+        }
+      } catch (e) {
+        console.error('Error handling execution:status event:', e);
+      }
+    });
+
+    es.onerror = (err: any) => {
+      if (!isCompleted) {
+        // Only log if we haven't completed yet
+        console.error('EventSource error:', err);
+      }
+    };
   } catch (error) {
     console.error('Error running tests:', error);
     process.exit(1);

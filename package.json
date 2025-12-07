@@ -28,6 +28,7 @@
     "allotment": "^1.20.4",
     "cheerio": "^1.1.0",
     "commander": "^14.0.2",
+    "eventsource": "^4.1.0",
     "express": "^5.2.1",
     "glob": "^11.0.3",
     "mathjs": "^14.5.3",
@@ -39,6 +40,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@types/eventsource": "^3.0.0",
     "@types/express": "^5.0.0",
     "@types/mathjs": "^9.4.2",
     "@types/node": "^20.0.0",
