@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { EventSource } from 'eventsource';
+import packageJson from '../../package.json';
 
 // Open URL in default browser (cross-platform)
 async function openBrowser(url: string): Promise<void> {
@@ -383,6 +384,9 @@ program
     }
   });
 
-program.name('pahcer-studio').description('CLI tool for pahcer-studio').version('0.1.0');
+program
+  .name('pahcer-studio')
+  .description('CLI tool for pahcer-studio')
+  .version(packageJson.version);
 
 program.parse(process.argv);
