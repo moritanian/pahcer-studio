@@ -277,20 +277,9 @@ async function runTests(options: {
 
     // Flag to prevent duplicate completion handling
     let isCompleted = false;
-
-    const handleCompletion = (status: any, execution: any) => {
+    const handleCompletion = () => {
       if (isCompleted) return;
       isCompleted = true;
-
-      if (status === 'COMPLETED') {
-        const exec = execution;
-        console.log('\nTest execution completed!');
-        console.log(`Average score: ${exec.averageScore?.toFixed(2) || 'N/A'}`);
-        console.log(`Average relative score: ${exec.averageRelativeScore?.toFixed(2) || 'N/A'}%`);
-        console.log(`Accepted: ${exec.acceptedCount}/${exec.totalCount}`);
-      } else {
-        console.log(`\nTest execution ${status.toLowerCase()}`);
-      }
       process.exit(0);
     };
 
@@ -308,7 +297,7 @@ async function runTests(options: {
           if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(data.status)) {
             // Wait a moment to allow pending logs to flush via SSE
             setTimeout(() => {
-              handleCompletion(data.status, data);
+              handleCompletion();
             }, 500);
           }
         }
@@ -336,7 +325,7 @@ async function runTests(options: {
         if (data.executionId === id && ['COMPLETED', 'FAILED', 'CANCELLED'].includes(data.status)) {
           // Wait a brief moment for any pending logs
           setTimeout(() => {
-            handleCompletion(data.status, data.execution);
+            handleCompletion();
             es.close();
           }, 100);
         }
@@ -345,7 +334,7 @@ async function runTests(options: {
       }
     });
 
-    es.onerror = (err: any) => {
+    es.onerror = (err) => {
       if (!isCompleted) {
         // Only log if we haven't completed yet
         console.error('EventSource error:', err);

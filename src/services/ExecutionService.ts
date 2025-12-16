@@ -103,13 +103,10 @@ export class ExecutionService extends EventEmitter {
       this.emitLog(executionId, 'info', 'Pacher process killed by user.');
 
       // プロセス停止直後にconfigを復元
-      this.emitLog(executionId, 'info', 'Restoring pahcer_config.toml from backup after stop...');
       const configRestored = await this.configService.restoreConfig();
 
       if (!configRestored) {
         this.emitLog(executionId, 'warn', 'Failed to restore pahcer_config.toml from backup');
-      } else {
-        this.emitLog(executionId, 'info', 'Config restored from backup successfully');
       }
 
       await this.updateExecutionStatus(executionId, 'CANCELLED');
@@ -180,17 +177,13 @@ export class ExecutionService extends EventEmitter {
       );
 
       // pacher実行完了直後にconfigを復元
-      this.emitLog(executionId, 'info', 'Restoring pahcer_config.toml from backup...');
       const configRestored = await this.configService.restoreConfig();
 
       if (!configRestored) {
         this.emitLog(executionId, 'warn', 'Failed to restore pahcer_config.toml from backup');
-      } else {
-        this.emitLog(executionId, 'info', 'Config restored from backup successfully');
       }
 
       if (result.success) {
-        this.emitLog(executionId, 'info', 'pacher execution completed.');
         await this.finalizeExecution(executionId, 'COMPLETED');
       } else {
         this.emitLog(executionId, 'error', `pacher execution failed: ${result.errorMessage}`);
@@ -198,7 +191,6 @@ export class ExecutionService extends EventEmitter {
       }
     } catch (error) {
       // エラーが発生した場合もconfigを復元
-      this.emitLog(executionId, 'info', 'Restoring pahcer_config.toml from backup after error...');
       const configRestored = await this.configService.restoreConfig();
 
       if (!configRestored) {
@@ -207,8 +199,6 @@ export class ExecutionService extends EventEmitter {
           'warn',
           'Failed to restore pahcer_config.toml from backup after error',
         );
-      } else {
-        this.emitLog(executionId, 'info', 'Config restored from backup successfully after error');
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -231,10 +221,8 @@ export class ExecutionService extends EventEmitter {
 
       // テスト実行が完了した場合のみ、すべての実行の相対スコアを再計算
       if (status === 'COMPLETED') {
-        this.emitLog(executionId, 'info', 'Recalculating relative scores for all executions...');
         try {
           await this.scoreAnalysisService.recalculateAllRelativeScores(this.executionRepository);
-          this.emitLog(executionId, 'info', 'Relative score recalculation completed successfully');
         } catch (error) {
           this.emitLog(
             executionId,
@@ -257,9 +245,6 @@ export class ExecutionService extends EventEmitter {
             execution: updatedExecution,
           });
           this.emit('execution:progress', { executionId, ...updatedExecution });
-
-          const resultText = `${updatedExecution.acceptedCount}/${updatedExecution.totalCount} cases passed.`;
-          this.emitLog(executionId, 'info', `Final result: ${resultText}`);
         }
       } else {
         // 失敗の場合は相対スコア再計算なしで即座に通知
