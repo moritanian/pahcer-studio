@@ -189,8 +189,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
                       <>
                         <p>{`Seed: ${d.seeds?.[0]}`}</p>
                         {selectedExecutionIds.map((id) => {
-                          const name =
-                            executions.find((e) => e.id === id)?.comment || id.substring(0, 8);
+                          const name = executions.find((e) => e.id === id)?.comment || id;
                           const v = d[name];
                           if (v === undefined || v === null) return null;
                           return (
@@ -206,7 +205,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
             <Legend />
             {selectedExecutionIds.map((execId, index) => {
               const execution = executions.find((e) => e.id === execId);
-              const execName = execution?.comment || execId.substring(0, 8);
+              const execName = execution?.comment || execId;
               const dataKey = getExecDataKey(execution, execId);
 
               return (

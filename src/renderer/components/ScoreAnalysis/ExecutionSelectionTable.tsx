@@ -88,7 +88,7 @@ const ExecutionSelectionTable: React.FC<ExecutionSelectionTableProps> = ({
                       onClick={(e) => e.stopPropagation()}
                     />
                   </TableCell>
-                  <TableCell>{execution.id?.substring(0, 8)}</TableCell>
+                  <TableCell>{execution.id}</TableCell>
                   <TableCell>{execution.comment || '-'}</TableCell>
                   <TableCell>
                     {execution.startTime

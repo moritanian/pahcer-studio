@@ -289,7 +289,7 @@ export class AnalysisService {
       const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
 
       // コメントを取得
-      const comment = info.comment || executionId.substring(0, 8);
+      const comment = info.comment || executionId;
 
       // シードをキーとするスコア辞書を作成
       const seeds: Record<number, ExecutionSeedResult> = {};
@@ -319,7 +319,7 @@ export class AnalysisService {
       console.error(`テスト実行データの取得に失敗しました: ${executionId}`, error);
       return {
         executionId,
-        comment: executionId.substring(0, 8),
+        comment: executionId,
         seeds: {} as Record<number, ExecutionSeedResult>,
       };
     }

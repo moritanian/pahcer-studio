@@ -289,7 +289,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                 onClick={() => onExecutionSelect(execution)}
               >
                 <TableCell sx={{ fontFamily: 'monospace', py: 0.5, px: 1 }}>
-                  {execution.id?.substring(0, 4) || '-'}
+                  {execution.id || '-'}
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>{execution.comment || '-'}</TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>{formatDate(execution.startTime)}</TableCell>
@@ -368,7 +368,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
           <Typography>
             このテスト実行を削除してもよろしいですか？
             <br />
-            ID: {executionToDelete?.id?.substring(0, 4)}
+            ID: {executionToDelete?.id}
           </Typography>
         </DialogContent>
         <DialogActions>

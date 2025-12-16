@@ -48,15 +48,10 @@ export const useInputFilter = (
     //   こうすることで「どの実行にも共通して存在する seed のみに限定され
     //   グラフがスカスカになる」事態を防ぎ、選択された実行の情報を
     //   余すことなく可視化できます。
-    //   ※ shortId 同士の比較で部分一致を許容しているのは、
-    //     UI で 8 文字短縮 ID を扱うケースを想定しているためです。
     const selectedScoreData = analysisResult.scoreData.filter((scoreData) => {
-      const shortId = scoreData.id.substring(0, 8);
       return selectedExecutionIds.some(
         (execId) =>
-          execId === scoreData.id ||
-          execId.includes(shortId) ||
-          (scoreData.id.length >= 8 && execId.includes(shortId)),
+          execId === scoreData.id || execId.includes(scoreData.id) || scoreData.id.includes(execId),
       );
     });
 

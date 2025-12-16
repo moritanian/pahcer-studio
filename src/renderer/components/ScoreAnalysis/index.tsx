@@ -197,15 +197,9 @@ const ScoreAnalysis: React.FC = () => {
     }
 
     // IDから行インデックスを探索
-    const shortId = id.substring(0, 8);
-
     for (let i = 0; i < analysisResult.scoreData.length; i++) {
       const data = analysisResult.scoreData[i];
-      if (
-        data.id === id ||
-        data.id.includes(shortId) ||
-        (data.id.length >= 8 && id.includes(data.id.substring(0, 8)))
-      ) {
+      if (data.id === id || data.id.includes(id) || id.includes(data.id)) {
         break;
       }
     }

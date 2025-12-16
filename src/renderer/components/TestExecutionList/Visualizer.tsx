@@ -309,7 +309,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
       >
         <Typography variant="h6" sx={{ mr: 2, fontSize: '1.1rem' }}>
           ビジュアライザー
-          {selectedExecution?.id && ` (ID: ${selectedExecution.id.substring(0, 4)})`}
+          {selectedExecution?.id && ` (ID: ${selectedExecution.id})`}
         </Typography>
         {visualizerReady && selectedExecution?.status === 'COMPLETED' && (
           <FormControl sx={{ width: '150px' }}>

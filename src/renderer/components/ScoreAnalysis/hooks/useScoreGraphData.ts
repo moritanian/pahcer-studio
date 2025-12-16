@@ -34,10 +34,8 @@ export interface ScoreGraphPoint {
  * - 予約語（"x", "seeds", "count"）の場合はプレフィックスを付ける
  */
 export function getExecDataKey(execution: TestExecution | undefined, execId: string): string {
-  const execName = execution?.comment || execId.substring(0, 8);
-  return ['x', 'seeds', 'count'].includes(execName)
-    ? `${execId.substring(0, 8)}_${execName}`
-    : execName;
+  const execName = execution?.comment || execId;
+  return ['x', 'seeds', 'count'].includes(execName) ? `${execId}_${execName}` : execName;
 }
 
 export function useChartDataset(
@@ -72,14 +70,9 @@ export function useChartDataset(
 
       //  対象実行ごとにスコアを列として追加
       selectedExecutionIds.forEach((execId) => {
-        const scoreData = analysisResult.scoreData.find((data) => {
-          const shortId = data.id.substring(0, 8);
-          return (
-            data.id === execId ||
-            execId.includes(shortId) ||
-            (data.id.length >= 8 && execId.includes(shortId))
-          );
-        });
+        const scoreData = analysisResult.scoreData.find(
+          (data) => data.id === execId || execId.includes(data.id) || data.id.includes(execId),
+        );
 
         if (scoreData) {
           const seedKey = String(input.seed);
