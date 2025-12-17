@@ -6,12 +6,39 @@ import * as fs from 'fs';
 import { EventSource } from 'eventsource';
 import packageJson from '../../package.json';
 
+// Check if running in WSL
+function isWSL(): boolean {
+  if (process.platform !== 'linux') {
+    return false;
+  }
+
+  // Check for WSL-specific files/environment
+  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) {
+    return true;
+  }
+
+  // Check /proc/version for WSL signature
+  try {
+    const procVersion = fs.readFileSync('/proc/version', 'utf8');
+    return /microsoft|WSL/i.test(procVersion);
+  } catch {
+    return false;
+  }
+}
+
 // Open URL in default browser (cross-platform)
 async function openBrowser(url: string): Promise<void> {
   const platform = process.platform;
   let command: string;
+  let args: string[] = [];
+  let useShell = true;
 
-  if (platform === 'win32') {
+  if (isWSL()) {
+    // WSL: Use cmd.exe to open browser in Windows
+    command = 'cmd.exe';
+    args = ['/c', 'start', url];
+    useShell = false;
+  } else if (platform === 'win32') {
     command = `start ${url}`;
   } else if (platform === 'darwin') {
     command = `open ${url}`;
@@ -20,7 +47,11 @@ async function openBrowser(url: string): Promise<void> {
   }
 
   return new Promise((resolve, reject) => {
-    spawn(command, { shell: true, stdio: 'ignore', detached: true }).on('error', reject).unref();
+    const proc = useShell
+      ? spawn(command, { shell: true, stdio: 'ignore', detached: true })
+      : spawn(command, args, { stdio: 'ignore', detached: true });
+
+    proc.on('error', reject).unref();
     resolve();
   });
 }
