@@ -100,8 +100,6 @@ export class ExecutionService extends EventEmitter {
   async stopExecution(executionId: string): Promise<void> {
     const killed = this.processManager.killProcess(executionId);
     if (killed) {
-      this.emitLog(executionId, 'info', 'Pacher process killed by user.');
-
       // プロセス停止直後にconfigを復元
       const configRestored = await this.configService.restoreConfig();
 
@@ -186,7 +184,6 @@ export class ExecutionService extends EventEmitter {
       if (result.success) {
         await this.finalizeExecution(executionId, 'COMPLETED');
       } else {
-        this.emitLog(executionId, 'error', `pacher execution failed: ${result.errorMessage}`);
         await this.finalizeExecution(executionId, 'FAILED');
       }
     } catch (error) {

@@ -278,17 +278,59 @@ async function runTests(options: {
 
     // Flag to prevent duplicate completion handling
     let isCompleted = false;
-    const handleCompletion = () => {
+    let poller: NodeJS.Timeout | null = null;
+    let es: EventSource | null = null;
+
+    // Cleanup function
+    const cleanup = () => {
+      if (poller) {
+        clearInterval(poller);
+        poller = null;
+      }
+      if (es) {
+        es.close();
+        es = null;
+      }
+      process.off('SIGINT', sigintHandler);
+      process.off('SIGTERM', sigintHandler);
+    };
+
+    // Handle Ctrl+C to stop execution gracefully
+    const sigintHandler = async () => {
       if (isCompleted) return;
+      console.log('\nStopping execution...');
+      try {
+        const stopResponse = await fetch(`${SERVER_URL}/api/execution/stop`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ executionId: id }),
+        });
+        if (!stopResponse.ok) {
+          console.error('Failed to stop execution');
+        }
+      } catch (error) {
+        console.error('Error stopping execution:', error);
+      }
       isCompleted = true;
+      cleanup();
       process.exit(0);
     };
 
+    const handleCompletion = () => {
+      if (isCompleted) return;
+      isCompleted = true;
+      cleanup();
+      process.exit(0);
+    };
+
+    process.on('SIGINT', sigintHandler);
+    process.on('SIGTERM', sigintHandler);
+
     // Start polling in background as a safety measure
     // This ensures we catch completion even if SSE events are missed or reader blocks
-    const poller = setInterval(async () => {
+    poller = setInterval(async () => {
       if (isCompleted) {
-        clearInterval(poller);
+        if (poller) clearInterval(poller);
         return;
       }
       try {
@@ -307,7 +349,7 @@ async function runTests(options: {
       }
     }, 2000);
 
-    const es = new EventSource(`${SERVER_URL}/api/events`);
+    es = new EventSource(`${SERVER_URL}/api/events`);
 
     es.addEventListener('execution:log', (event: MessageEvent) => {
       try {
@@ -327,7 +369,7 @@ async function runTests(options: {
           // Wait a brief moment for any pending logs
           setTimeout(() => {
             handleCompletion();
-            es.close();
+            if (es) es.close();
           }, 100);
         }
       } catch (e) {
@@ -335,7 +377,7 @@ async function runTests(options: {
       }
     });
 
-    es.onerror = (err) => {
+    es.onerror = (err: unknown) => {
       if (!isCompleted) {
         // Only log if we haven't completed yet
         console.error('EventSource error:', err);
