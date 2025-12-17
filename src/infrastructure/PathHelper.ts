@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
+import * as os from 'os';
 
 /**
  * WSLおよびパス処理に関するヘルパークラス
@@ -7,6 +8,25 @@ import * as path from 'path';
 export class PathHelper {
   /** pahcer-studio のデータディレクトリ名 */
   private static readonly PAHCER_STUDIO_DIR = 'pahcer-studio';
+
+  /**
+   * チルダ（~）をホームディレクトリに展開する
+   * @param inputPath 展開するパス
+   * @returns 展開されたパス
+   */
+  static expandTilde(inputPath: string): string {
+    if (!inputPath) {
+      return inputPath;
+    }
+
+    // ~ で始まる場合のみ展開
+    if (inputPath.startsWith('~/') || inputPath === '~') {
+      const homeDir = os.homedir();
+      return inputPath.replace(/^~(?=$|\/|\\)/, homeDir);
+    }
+
+    return inputPath;
+  }
 
   /**
    * シェルコマンドの引数をエスケープする（単一引用符方式）

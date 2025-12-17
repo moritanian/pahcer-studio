@@ -109,7 +109,12 @@ app.delete('/api/execution/:id', async (req, res) => {
 app.post('/api/workspace/set', async (req, res) => {
   try {
     const workspace = req.body as Workspace;
-    workspaceService.setWorkspace(workspace);
+    // チルダを展開
+    const expandedWorkspace: Workspace = {
+      ...workspace,
+      targetDirectory: PathHelper.expandTilde(workspace.targetDirectory),
+    };
+    workspaceService.setWorkspace(expandedWorkspace);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: String(error) });
