@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { EventSource } from 'eventsource';
 import packageJson from '../../package.json';
+import { PathHelper } from '../infrastructure/PathHelper';
 
 // Check if running in WSL
 function isWSL(): boolean {
@@ -242,6 +243,7 @@ async function runTests(options: {
   comment?: string;
   shuffle?: boolean;
   freeze?: boolean;
+  directory?: string;
 }): Promise<void> {
   const isRunning = await isServerRunning();
 
@@ -250,19 +252,28 @@ async function runTests(options: {
     await startServer(false);
   }
 
-  // Check if pahcer_config.toml exists in current directory
-  const configPath = path.join(process.cwd(), 'pahcer_config.toml');
+  // Determine target directory
+  let targetDir = options.directory ? options.directory : process.cwd();
+
+  // Expand tilde if present
+  targetDir = PathHelper.expandTilde(targetDir);
+
+  // Resolve to absolute path
+  if (!path.isAbsolute(targetDir)) {
+    targetDir = path.resolve(process.cwd(), targetDir);
+  }
+
+  // Check if pahcer_config.toml exists in target directory
+  const configPath = path.join(targetDir, 'pahcer_config.toml');
   if (!fs.existsSync(configPath)) {
-    console.error('Error: pahcer_config.toml not found in current directory');
-    console.error(
-      'Please run this command from your AHC project directory (where pahcer is initialized)',
-    );
+    console.error(`Error: pahcer_config.toml not found in directory: ${targetDir}`);
+    console.error('Please specify a valid AHC project directory (where pahcer is initialized)');
     process.exit(1);
   }
 
   // Set workspace
   const workspaceData = {
-    targetDirectory: process.cwd(),
+    targetDirectory: targetDir,
     useWsl: false,
   };
 
@@ -422,14 +433,14 @@ async function runTests(options: {
 
 // Run command
 program
-  .command('run')
+  .command('run [directory]')
   .description('Run pahcer tests (starts server if not running)')
   .option('-n, --count <number>', 'Number of test cases to run', '100')
   .option('-s, --seed <number>', 'Starting seed value', '0')
   .option('-c, --comment <string>', 'Comment for this execution')
   .option('--shuffle', 'Shuffle test case order', false)
   .option('--freeze', 'Freeze best scores', false)
-  .action(async (options) => {
+  .action(async (directory, options) => {
     try {
       await runTests({
         count: parseInt(options.count, 10),
@@ -437,6 +448,7 @@ program
         comment: options.comment,
         shuffle: options.shuffle,
         freeze: options.freeze,
+        directory: directory,
       });
     } catch (error) {
       console.error('Error running tests:', error);
