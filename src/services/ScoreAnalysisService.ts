@@ -1,4 +1,5 @@
 import type { TestExecution, TestCase } from '../schemas/execution';
+import type { Workspace } from '../schemas/workspace';
 import { ConfigService } from './ConfigService';
 import type { SummaryJson, SummaryCaseRaw } from '../types/summary';
 import type { IExecutionRepository } from '../repositories/IExecutionRepository';
@@ -13,22 +14,22 @@ export class ScoreAnalysisService {
   /**
    * コンストラクタ
    */
-  constructor(configService: ConfigService) {
-    this.configService = configService;
+  constructor() {
+    this.configService = new ConfigService();
   }
 
   /**
    * BestScores と Objective を並列取得する内部ヘルパー
    * UI からは直接呼ばれません。
    */
-  private async loadConfig(): Promise<{
+  private async loadConfig(workspace: Workspace): Promise<{
     bestScores: Record<number, number>;
     objective: 'Max' | 'Min';
   }> {
     try {
       const [bestScores, objective] = await Promise.all([
-        this.configService.getBestScores(),
-        this.configService.getObjective(),
+        this.configService.getBestScores(workspace),
+        this.configService.getObjective(workspace),
       ]);
       return { bestScores, objective };
     } catch (err) {
@@ -59,10 +60,12 @@ export class ScoreAnalysisService {
    *
    * @param execution UI へ返す TestExecution オブジェクト
    * @param summaryData 事前に読み込んだ summary.json の中身
+   * @param workspace 現在のworkspace
    * @returns relativeScore を含む新しい TestExecution
    */
   async enrichExecutionWithRelativeScore(
     execution: TestExecution,
+    workspace: Workspace,
     summaryData?: SummaryJson,
   ): Promise<TestExecution> {
     if (!summaryData?.cases || !Array.isArray(summaryData.cases)) {
@@ -71,7 +74,7 @@ export class ScoreAnalysisService {
 
     let bestScores: Record<number, number>, objective: 'Max' | 'Min';
     try {
-      ({ bestScores, objective } = await this.loadConfig());
+      ({ bestScores, objective } = await this.loadConfig(workspace));
     } catch {
       // Config が取れなければ相対スコア 0 で返却
       return { ...execution, averageRelativeScore: 0 };
@@ -94,12 +97,15 @@ export class ScoreAnalysisService {
    * 個々の TestCase 配列に relativeScore を追加する
    * フロントエンドに返すデータ整形も兼ねています。
    */
-  async enrichTestCasesWithRelativeScore(testCaseData: SummaryCaseRaw[]): Promise<TestCase[]> {
+  async enrichTestCasesWithRelativeScore(
+    testCaseData: SummaryCaseRaw[],
+    workspace: Workspace,
+  ): Promise<TestCase[]> {
     if (!Array.isArray(testCaseData)) return [];
 
     let bestScores: Record<number, number>, objective: 'Max' | 'Min';
     try {
-      ({ bestScores, objective } = await this.loadConfig());
+      ({ bestScores, objective } = await this.loadConfig(workspace));
     } catch {
       return []; // Config 取得失敗時は空配列
     }
@@ -126,14 +132,14 @@ export class ScoreAnalysisService {
    * summary.json から実行全体の統計を計算
    * @returns 平均スコア・相対スコアなどを持つオブジェクト
    */
-  async calculateExecutionStats(summaryData: SummaryJson) {
+  async calculateExecutionStats(summaryData: SummaryJson, workspace: Workspace) {
     const caseCnt = Number(summaryData.case_count ?? 0);
     const avgScore = caseCnt > 0 ? Number(summaryData.total_score ?? 0) / caseCnt : 0;
 
     let avgRel = 0;
     if (caseCnt > 0 && Array.isArray(summaryData.cases)) {
       try {
-        const { bestScores, objective } = await this.loadConfig();
+        const { bestScores, objective } = await this.loadConfig(workspace);
         let total = 0,
           cnt = 0;
         for (const c of summaryData.cases) {
@@ -166,20 +172,23 @@ export class ScoreAnalysisService {
    *   - config を事前取得してループ内ロードを避ける
    *   - 変化があるもののみ保存し、件数をログ出力
    */
-  async recalculateAllRelativeScores(executionRepository: IExecutionRepository): Promise<void> {
+  async recalculateAllRelativeScores(
+    executionRepository: IExecutionRepository,
+    workspace: Workspace,
+  ): Promise<void> {
     // 外側で一度だけ Config を取得
     let bestScores: Record<number, number>, objective: 'Max' | 'Min';
     try {
-      ({ bestScores, objective } = await this.loadConfig());
+      ({ bestScores, objective } = await this.loadConfig(workspace));
     } catch {
       console.error('Config なしでは再計算できませんわ');
       return;
     }
 
-    const allExecutions = await executionRepository.findAll();
+    const allExecutions = await executionRepository.findAll(workspace);
 
     for (const exe of allExecutions) {
-      const summary = await this.readSummary(executionRepository.getSummaryPath(exe.id));
+      const summary = await this.readSummary(executionRepository.getSummaryPath(exe.id, workspace));
       if (!summary?.cases) continue;
 
       let total = 0,
@@ -197,18 +206,18 @@ export class ScoreAnalysisService {
       const newAvg = cnt ? total / cnt : 0;
       if (Math.abs(newAvg - (exe.averageRelativeScore || 0)) > 0.001) {
         exe.averageRelativeScore = isNaN(newAvg) ? 0 : newAvg;
-        await executionRepository.save(exe);
+        await executionRepository.save(exe, workspace);
       }
     }
   }
 
   /** ConfigService ラッパー: BestScores を外部公開 */
-  async getBestScores(): Promise<Record<number, number>> {
-    return await this.configService.getBestScores();
+  async getBestScores(workspace: Workspace): Promise<Record<number, number>> {
+    return await this.configService.getBestScores(workspace);
   }
 
   /** ConfigService ラッパー: Objective を外部公開 */
-  async getObjective(): Promise<'Max' | 'Min'> {
-    return await this.configService.getObjective();
+  async getObjective(workspace: Workspace): Promise<'Max' | 'Min'> {
+    return await this.configService.getObjective(workspace);
   }
 }

@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import { parse, stringify } from 'smol-toml';
-import { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
 import { PathHelper } from '../infrastructure/PathHelper';
+import type { Workspace } from '../schemas/workspace';
 
 export interface PahcerConfig {
   general?: {
@@ -26,50 +26,35 @@ export interface PahcerConfig {
  * pahcer_config.tomlの操作を行うサービス
  */
 export class ConfigService {
-  private readonly workspaceRepository: IWorkspaceRepository;
-
-  constructor(workspaceRepository: IWorkspaceRepository) {
-    this.workspaceRepository = workspaceRepository;
-  }
-
-  /**
-   * 現在のワークスペースディレクトリを取得
-   */
-  private getWorkspaceDir(): string {
-    const workspace = this.workspaceRepository.getWorkspace();
-    if (!workspace) {
-      throw new Error('Workspace not set. Please select a workspace first.');
-    }
-    return workspace.targetDirectory;
-  }
+  constructor() {}
 
   /**
    * pahcer_config.toml のパスを取得
    */
-  private getConfigPath(): string {
-    return PathHelper.getConfigPath(this.getWorkspaceDir());
+  private getConfigPath(workspace: Workspace): string {
+    return PathHelper.getConfigPath(workspace.targetDirectory);
   }
 
   /**
    * pahcer_config.toml.bak のパスを取得
    */
-  private getBackupPath(): string {
-    return PathHelper.getBackupPath(this.getWorkspaceDir());
+  private getBackupPath(workspace: Workspace): string {
+    return PathHelper.getBackupPath(workspace.targetDirectory);
   }
 
   /**
    * best_scores.json のパスを取得
    */
-  private getBestScoresPath(): string {
-    return PathHelper.getBestScoresPath(this.getWorkspaceDir());
+  private getBestScoresPath(workspace: Workspace): string {
+    return PathHelper.getBestScoresPath(workspace.targetDirectory);
   }
 
   /**
    * pahcer_config.tomlの設定を取得
    */
-  async getConfig(): Promise<PahcerConfig> {
+  async getConfig(workspace: Workspace): Promise<PahcerConfig> {
     try {
-      const configPath = this.getConfigPath();
+      const configPath = this.getConfigPath(workspace);
       const content = await fs.readFile(configPath, 'utf-8');
       return parse(content) as PahcerConfig;
     } catch (error) {
@@ -81,20 +66,20 @@ export class ConfigService {
   /**
    * pahcer_config.tomlの設定を更新
    */
-  async updateConfig(config: PahcerConfig): Promise<PahcerConfig> {
+  async updateConfig(config: PahcerConfig, workspace: Workspace): Promise<PahcerConfig> {
     try {
       // 現在の設定を読み込む
-      const currentConfig = await this.getConfig();
+      const currentConfig = await this.getConfig(workspace);
 
       // 設定をマージ
       const updatedConfig = this.mergeConfig(currentConfig, config);
 
       // smol-tomlのstringifyを使用してTOML文字列を生成
       const tomlContent = stringify(updatedConfig);
-      const configPath = this.getConfigPath();
+      const configPath = this.getConfigPath(workspace);
       await fs.writeFile(configPath, tomlContent, 'utf-8');
 
-      return await this.getConfig();
+      return await this.getConfig(workspace);
     } catch (error) {
       console.error(`Error updating config: ${error}`);
       return config;
@@ -104,10 +89,10 @@ export class ConfigService {
   /**
    * pahcer_config.tomlをバックアップ
    */
-  async backupConfig(): Promise<boolean> {
+  async backupConfig(workspace: Workspace): Promise<boolean> {
     try {
-      const configPath = this.getConfigPath();
-      const backupPath = this.getBackupPath();
+      const configPath = this.getConfigPath(workspace);
+      const backupPath = this.getBackupPath(workspace);
       await fs.copyFile(configPath, backupPath);
       return true;
     } catch (error) {
@@ -119,10 +104,10 @@ export class ConfigService {
   /**
    * バックアップからpahcer_config.tomlを復元
    */
-  async restoreConfig(): Promise<boolean> {
+  async restoreConfig(workspace: Workspace): Promise<boolean> {
     try {
-      const backupPath = this.getBackupPath();
-      const configPath = this.getConfigPath();
+      const backupPath = this.getBackupPath(workspace);
+      const configPath = this.getConfigPath(workspace);
 
       await fs.access(backupPath);
       await fs.copyFile(backupPath, configPath);
@@ -137,13 +122,17 @@ export class ConfigService {
    * テスト実行用にpahcer_config.tomlを更新
    * Python側のupdate_config_for_testと同じ機能
    */
-  async updateConfigForTest(testCaseCount: number, startSeed: number): Promise<boolean> {
+  async updateConfigForTest(
+    testCaseCount: number,
+    startSeed: number,
+    workspace: Workspace,
+  ): Promise<boolean> {
     try {
       // 設定をバックアップ
-      await this.backupConfig();
+      await this.backupConfig(workspace);
 
       // 現在の設定を読み込む
-      const currentConfig = await this.getConfig();
+      const currentConfig = await this.getConfig(workspace);
 
       // テスト設定を更新
       const updatedConfig = {
@@ -157,7 +146,7 @@ export class ConfigService {
 
       // smol-tomlのstringifyを使用してTOML文字列を生成
       const tomlContent = stringify(updatedConfig);
-      const configPath = this.getConfigPath();
+      const configPath = this.getConfigPath(workspace);
       await fs.writeFile(configPath, tomlContent, 'utf-8');
 
       return true;
@@ -181,9 +170,9 @@ export class ConfigService {
   /**
    * 問題の目的関数（Max/Min）を取得
    */
-  async getObjective(): Promise<'Max' | 'Min'> {
+  async getObjective(workspace: Workspace): Promise<'Max' | 'Min'> {
     try {
-      const config = await this.getConfig();
+      const config = await this.getConfig(workspace);
       return config.problem?.objective || 'Max'; // デフォルトはMax
     } catch (error) {
       console.error(`Error getting objective: ${error}`);
@@ -194,9 +183,9 @@ export class ConfigService {
   /**
    * best_scores.jsonからベストスコアを取得
    */
-  async getBestScores(): Promise<Record<number, number>> {
+  async getBestScores(workspace: Workspace): Promise<Record<number, number>> {
     try {
-      const bestScoresPath = this.getBestScoresPath();
+      const bestScoresPath = this.getBestScoresPath(workspace);
       const content = await fs.readFile(bestScoresPath, 'utf-8');
       const bestScores = JSON.parse(content);
 

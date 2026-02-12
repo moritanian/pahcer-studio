@@ -1,16 +1,26 @@
-import type { Workspace } from '../schemas/execution';
+import type { Workspace } from '../schemas/workspace';
 
 /**
  * ワークスペースの状態管理を行うリポジトリのインターフェース
  */
 export interface IWorkspaceRepository {
   /**
-   * 現在のワークスペースを設定する
+   * workspace IDをキーにworkspaceを保存する
    */
-  setWorkspace(workspace: Workspace): void;
+  saveWorkspace(workspace: Workspace): void;
 
   /**
-   * 現在のワークスペースを取得する
+   * workspace IDでworkspaceを取得する
    */
-  getWorkspace(): Workspace | null;
+  getWorkspace(id: string): Workspace | null;
+
+  /**
+   * すべてのworkspaceを取得する
+   */
+  listWorkspaces(): Workspace[];
+
+  /**
+   * workspace IDでworkspaceを削除する
+   */
+  deleteWorkspace(id: string): boolean;
 }

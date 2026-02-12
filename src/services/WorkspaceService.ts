@@ -1,27 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-
-/**
- * ワークスペースの履歴
- */
-export interface WorkspaceHistory {
-  path: string;
-  useWsl: boolean;
-  lastOpened: number; // timestamp
-}
-
-/**
- * アプリケーション全体の設定（app_setting.json）
- */
-export interface AppSettings {
-  projects: WorkspaceHistory[];
-}
-
-/**
- * アプリケーション全体の設定（app_setting.json）の操作を行うサービス
- */
 import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
-import type { Workspace } from '../schemas/execution';
+import type { Workspace, AppSettings } from '../schemas/workspace';
 
 /**
  * アプリケーション全体の設定（app_setting.json）の操作を行うサービス
@@ -36,25 +16,31 @@ export class WorkspaceService {
   }
 
   /**
-   * ワークスペースを設定する
+   * ワークスペースを保存する
    */
-  setWorkspace(workspace: Workspace): void {
-    this.workspaceRepository.setWorkspace(workspace);
+  saveWorkspace(workspace: Workspace): void {
+    this.workspaceRepository.saveWorkspace(workspace);
   }
 
   /**
-   * 現在のワークスペースを取得する
+   * workspace IDでworkspaceを取得する
    */
-  getWorkspace(): Workspace | null {
-    return this.workspaceRepository.getWorkspace();
+  getWorkspace(id: string): Workspace | null {
+    return this.workspaceRepository.getWorkspace(id);
   }
 
   /**
-   * ワークスペースのディレクトリパスを取得する
+   * すべてのworkspaceを取得する
    */
-  getWorkspaceDirectory(): string | null {
-    const workspace = this.workspaceRepository.getWorkspace();
-    return workspace?.targetDirectory ?? null;
+  listWorkspaces(): Workspace[] {
+    return this.workspaceRepository.listWorkspaces();
+  }
+
+  /**
+   * workspace IDでworkspaceを削除する
+   */
+  deleteWorkspace(id: string): boolean {
+    return this.workspaceRepository.deleteWorkspace(id);
   }
 
   /**

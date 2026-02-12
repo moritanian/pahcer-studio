@@ -13,7 +13,11 @@ import AnalysisChart from './AnalysisChart';
 import { apiClient } from '../../api/client';
 import { useExecutionEvents } from '../../contexts/EventSourceContext';
 
-const ScoreAnalysis: React.FC = () => {
+interface ScoreAnalysisProps {
+  workspaceId: string;
+}
+
+const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
   // グローバル状態管理
   const [loading, setLoading] = useState(false);
   const [executionsLoading, setExecutionsLoading] = useState(false);
@@ -34,7 +38,7 @@ const ScoreAnalysis: React.FC = () => {
     const loadSettings = async () => {
       try {
         // --- (1) 設定を取得 -----------------------------
-        const settings = await apiClient.analysis.getSettings();
+        const settings = await apiClient.analysis.getSettings(workspaceId);
 
         if (settings.featureFormat) {
           setFeatureFormat(settings.featureFormat);
@@ -50,7 +54,7 @@ const ScoreAnalysis: React.FC = () => {
     const loadExecutions = async () => {
       try {
         setExecutionsLoading(true);
-        const executionsList = await apiClient.execution.getAll();
+        const executionsList = await apiClient.execution.getAll(workspaceId);
 
         if (executionsList && Array.isArray(executionsList)) {
           const completedExecutions = executionsList.filter((e) => e.status === 'COMPLETED');
@@ -66,7 +70,7 @@ const ScoreAnalysis: React.FC = () => {
     // --- (3) 並行ロード --------------------------------
     loadSettings();
     loadExecutions();
-  }, []);
+  }, [workspaceId]);
 
   /* =====================================================
    * 2. 分析データの取得ロジック
@@ -90,7 +94,7 @@ const ScoreAnalysis: React.FC = () => {
           featureFormat,
         };
 
-        const response = await apiClient.analysis.analyze(request);
+        const response = await apiClient.analysis.analyze(workspaceId, request);
         setAnalysisResult(response);
       }
     } catch (error) {
@@ -98,7 +102,7 @@ const ScoreAnalysis: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [featureFormat, executions]);
+  }, [featureFormat, executions, workspaceId]);
 
   // 設定/実行一覧が揃ったタイミングで分析をトリガー
   useEffect(() => {
@@ -114,7 +118,7 @@ const ScoreAnalysis: React.FC = () => {
   const handleStatusChange = useCallback(async () => {
     // テスト実行が完了したら実行リストを再取得
     try {
-      const executionsList = await apiClient.execution.getAll();
+      const executionsList = await apiClient.execution.getAll(workspaceId);
       if (executionsList && Array.isArray(executionsList)) {
         const completedExecutions = executionsList.filter((e) => e.status === 'COMPLETED');
         setExecutions(completedExecutions);
@@ -122,7 +126,7 @@ const ScoreAnalysis: React.FC = () => {
     } catch (error) {
       console.error('実行リストの更新に失敗しました:', error);
     }
-  }, []);
+  }, [workspaceId]);
 
   useExecutionEvents({
     onStatusChange: handleStatusChange,
@@ -146,7 +150,7 @@ const ScoreAnalysis: React.FC = () => {
         featureFormat,
       };
 
-      const result = await apiClient.analysis.updateCache(requestData);
+      const result = await apiClient.analysis.updateCache(workspaceId, requestData);
 
       if (result.successful) {
         setError(null);
@@ -155,7 +159,7 @@ const ScoreAnalysis: React.FC = () => {
         await fetchAnalysisData();
 
         // ★ 永続化: 入力フォーマットを保存
-        await apiClient.analysis.saveSettings(featureFormat);
+        await apiClient.analysis.saveSettings(workspaceId, featureFormat);
 
         // 成功時に選択をクリア
         setSelectedExecutionIds([]);

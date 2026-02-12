@@ -6,8 +6,8 @@ import type {
   TestExecutionStatus,
   LogMessage,
   TestCase,
-  Workspace,
 } from '../schemas/execution';
+import type { Workspace } from '../schemas/workspace';
 import type { IExecutionRepository } from '../repositories/IExecutionRepository';
 import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
 import type { ProcessManager } from '../infrastructure/ProcessManager';
@@ -37,20 +37,15 @@ export class ExecutionService extends EventEmitter {
   /**
    * テスト実行を開始する
    */
-  async startExecution(request: TestExecutionRequest): Promise<string> {
-    const executionId = await this.generateNextExecutionId();
-
-    // WorkspaceRepository からワークスペースを取得
-    const workspace = this.workspaceRepository.getWorkspace();
-    if (!workspace) {
-      throw new Error('Workspace not set. Please select a workspace first.');
-    }
+  async startExecution(request: TestExecutionRequest, workspace: Workspace): Promise<string> {
+    const executionId = await this.generateNextExecutionId(workspace);
 
     // Python側と同じように、pahcer_config.tomlを更新
     this.emitLog(executionId, 'info', 'Updating pahcer_config.toml for test execution...');
     const configUpdated = await this.configService.updateConfigForTest(
       request.testCaseCount,
       request.startSeed,
+      workspace,
     );
 
     if (!configUpdated) {
@@ -83,12 +78,12 @@ export class ExecutionService extends EventEmitter {
       totalCount: request.testCaseCount,
       maxExecutionTime: null,
     };
-    await this.executionRepository.save(initialExecution);
+    await this.executionRepository.save(initialExecution, workspace);
 
     // 非同期でpacher実行を開始
     this.executePacher(executionId, request, workspace).catch((error) => {
       console.error(`Execution ${executionId} failed fatally:`, error);
-      this.updateExecutionStatus(executionId, 'FAILED');
+      this.updateExecutionStatus(executionId, 'FAILED', workspace);
     });
 
     return executionId;
@@ -97,56 +92,63 @@ export class ExecutionService extends EventEmitter {
   /**
    * テスト実行を停止する
    */
-  async stopExecution(executionId: string): Promise<void> {
+  async stopExecution(executionId: string, workspace: Workspace): Promise<void> {
     const killed = this.processManager.killProcess(executionId);
     if (killed) {
       // プロセス停止直後にconfigを復元
-      const configRestored = await this.configService.restoreConfig();
+      const configRestored = await this.configService.restoreConfig(workspace);
 
       if (!configRestored) {
         this.emitLog(executionId, 'warn', 'Failed to restore pahcer_config.toml from backup');
       }
 
-      await this.updateExecutionStatus(executionId, 'CANCELLED');
+      await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
     }
   }
 
   /**
    * 実行ステータスを取得する
    */
-  async getExecutionStatus(executionId: string): Promise<TestExecution | null> {
-    return await this.executionRepository.findById(executionId);
+  async getExecutionStatus(
+    executionId: string,
+    workspace: Workspace,
+  ): Promise<TestExecution | null> {
+    return await this.executionRepository.findById(executionId, workspace);
   }
 
   /**
    * 全ての実行を取得する
    */
-  async getAllExecutions(): Promise<TestExecution[]> {
-    return await this.executionRepository.findAll();
+  async getAllExecutions(workspace: Workspace): Promise<TestExecution[]> {
+    return await this.executionRepository.findAll(workspace);
   }
 
   /**
    * 指定された実行のテストケース一覧を取得する
    */
-  async getTestCases(executionId: string): Promise<TestCase[]> {
-    return await this.executionRepository.findTestCasesByExecutionId(executionId);
+  async getTestCases(executionId: string, workspace: Workspace): Promise<TestCase[]> {
+    return await this.executionRepository.findTestCasesByExecutionId(executionId, workspace);
   }
 
   /**
    * 指定された実行の特定のテストケースの結果（標準出力）を取得する
    */
-  async getTestCaseResult(executionId: string, seed: number): Promise<string | null> {
-    return await this.executionRepository.findTestCaseResult(executionId, seed);
+  async getTestCaseResult(
+    executionId: string,
+    seed: number,
+    workspace: Workspace,
+  ): Promise<string | null> {
+    return await this.executionRepository.findTestCaseResult(executionId, seed, workspace);
   }
 
   /**
    * テスト実行履歴を削除する
    */
-  async deleteExecution(executionId: string): Promise<void> {
+  async deleteExecution(executionId: string, workspace: Workspace): Promise<void> {
     // 稼働中かもしれないプロセスを停止しようと試みる
     this.processManager.killProcess(executionId);
     // その後、関連ディレクトリを削除
-    await this.executionRepository.delete(executionId);
+    await this.executionRepository.delete(executionId, workspace);
     this.emitLog(executionId, 'info', `Execution data deleted.`);
     // TODO: UIに削除を通知するためのイベントを発行することもできる
     // this.emit("execution:deleted", { executionId });
@@ -161,7 +163,7 @@ export class ExecutionService extends EventEmitter {
     workspace: Workspace,
   ): Promise<void> {
     try {
-      await this.updateExecutionStatus(executionId, 'RUNNING');
+      await this.updateExecutionStatus(executionId, 'RUNNING', workspace);
       this.emitLog(executionId, 'info', `pacher test execution started: ${executionId}`);
 
       const result = await this.processManager.executePacher(
@@ -175,20 +177,20 @@ export class ExecutionService extends EventEmitter {
       );
 
       // pacher実行完了直後にconfigを復元
-      const configRestored = await this.configService.restoreConfig();
+      const configRestored = await this.configService.restoreConfig(workspace);
 
       if (!configRestored) {
         this.emitLog(executionId, 'warn', 'Failed to restore pahcer_config.toml from backup');
       }
 
       if (result.success) {
-        await this.finalizeExecution(executionId, 'COMPLETED');
+        await this.finalizeExecution(executionId, 'COMPLETED', workspace);
       } else {
-        await this.finalizeExecution(executionId, 'FAILED');
+        await this.finalizeExecution(executionId, 'FAILED', workspace);
       }
     } catch (error) {
       // エラーが発生した場合もconfigを復元
-      const configRestored = await this.configService.restoreConfig();
+      const configRestored = await this.configService.restoreConfig(workspace);
 
       if (!configRestored) {
         this.emitLog(
@@ -200,26 +202,33 @@ export class ExecutionService extends EventEmitter {
 
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.emitLog(executionId, 'error', `pacher execution error: ${errorMessage}`);
-      await this.finalizeExecution(executionId, 'FAILED');
+      await this.finalizeExecution(executionId, 'FAILED', workspace);
     }
   }
 
   /**
    * 実行完了または失敗後の最終処理
    */
-  private async finalizeExecution(executionId: string, status: TestExecutionStatus): Promise<void> {
+  private async finalizeExecution(
+    executionId: string,
+    status: TestExecutionStatus,
+    workspace: Workspace,
+  ): Promise<void> {
     // リポジトリから最新の情報を読み込む（summary.jsonとのマージ結果）
-    const finalExecution = await this.executionRepository.findById(executionId);
+    const finalExecution = await this.executionRepository.findById(executionId, workspace);
 
     if (finalExecution) {
       // ステータスを更新して保存
       finalExecution.status = status;
-      await this.executionRepository.save(finalExecution);
+      await this.executionRepository.save(finalExecution, workspace);
 
       // テスト実行が完了した場合のみ、すべての実行の相対スコアを再計算
       if (status === 'COMPLETED') {
         try {
-          await this.scoreAnalysisService.recalculateAllRelativeScores(this.executionRepository);
+          await this.scoreAnalysisService.recalculateAllRelativeScores(
+            this.executionRepository,
+            workspace,
+          );
         } catch (error) {
           this.emitLog(
             executionId,
@@ -231,7 +240,7 @@ export class ExecutionService extends EventEmitter {
         }
 
         // 相対スコア再計算後に最新のデータを再読み込み
-        const updatedExecution = await this.executionRepository.findById(executionId);
+        const updatedExecution = await this.executionRepository.findById(executionId, workspace);
         if (updatedExecution) {
           updatedExecution.status = status;
 
@@ -257,15 +266,15 @@ export class ExecutionService extends EventEmitter {
       }
     } else {
       // フォールバック
-      await this.updateExecutionStatus(executionId, status);
+      await this.updateExecutionStatus(executionId, status, workspace);
     }
   }
 
   /**
    * 次の実行IDを生成する (id_xxxx形式)
    */
-  private async generateNextExecutionId(): Promise<string> {
-    const executions = await this.executionRepository.findAll();
+  private async generateNextExecutionId(workspace: Workspace): Promise<string> {
+    const executions = await this.executionRepository.findAll(workspace);
     let maxId = 0;
     const idPattern = /^id_(\d+)$/;
 
@@ -298,9 +307,10 @@ export class ExecutionService extends EventEmitter {
   private async updateExecutionStatus(
     executionId: string,
     status: TestExecutionStatus,
+    workspace: Workspace,
   ): Promise<void> {
-    await this.executionRepository.updateStatus(executionId, status);
-    const execution = await this.executionRepository.findById(executionId);
+    await this.executionRepository.updateStatus(executionId, status, workspace);
+    const execution = await this.executionRepository.findById(executionId, workspace);
     if (execution) {
       this.emit('execution:status', { executionId, status, execution });
     }

@@ -271,25 +271,13 @@ async function runTests(options: {
     process.exit(1);
   }
 
-  // Set workspace
-  const workspaceData = {
-    targetDirectory: targetDir,
-    useWsl: false,
-  };
-
+  // Create or get workspace
+  let workspace;
   try {
-    const workspaceResponse = await fetch(`${SERVER_URL}/api/workspace/set`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(workspaceData),
-    });
-
-    if (!workspaceResponse.ok) {
-      console.error('Failed to set workspace');
-      process.exit(1);
-    }
+    workspace = await getWorkspace(targetDir);
+    console.log(`Using workspace: ${workspace.id} (${workspace.targetDirectory})`);
   } catch (error) {
-    console.error('Error setting workspace:', error);
+    console.error('Error creating workspace:', error);
     process.exit(1);
   }
 
@@ -303,7 +291,7 @@ async function runTests(options: {
   };
 
   try {
-    const response = await fetch(`${SERVER_URL}/api/execution/start`, {
+    const response = await fetch(`${SERVER_URL}/api/workspaces/${workspace.id}/executions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(executionRequest),
@@ -342,11 +330,13 @@ async function runTests(options: {
       if (isCompleted) return;
       console.log('\nStopping execution...');
       try {
-        const stopResponse = await fetch(`${SERVER_URL}/api/execution/stop`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ executionId: id }),
-        });
+        const stopResponse = await fetch(
+          `${SERVER_URL}/api/workspaces/${workspace.id}/executions/${id}/stop`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
         if (!stopResponse.ok) {
           console.error('Failed to stop execution');
         }
@@ -376,7 +366,7 @@ async function runTests(options: {
         return;
       }
       try {
-        const res = await fetch(`${SERVER_URL}/api/execution/status/${id}`);
+        const res = await fetch(`${SERVER_URL}/api/workspaces/${workspace.id}/executions/${id}`);
         if (res.ok) {
           const data = await res.json();
           if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(data.status)) {

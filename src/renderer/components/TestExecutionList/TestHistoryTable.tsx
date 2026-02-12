@@ -31,6 +31,7 @@ import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import { apiClient } from '../../api/client';
 
 interface TestHistoryTableProps {
+  workspaceId: string;
   executions: TestExecution[];
   loading: boolean;
   selectedExecution: TestExecution | null;
@@ -40,6 +41,7 @@ interface TestHistoryTableProps {
 }
 
 const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
+  workspaceId,
   executions,
   loading,
   selectedExecution,
@@ -152,7 +154,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
 
     setDeleting(true);
     try {
-      await apiClient.execution.delete(executionToDelete.id);
+      await apiClient.execution.delete(workspaceId, executionToDelete.id);
       setDeleteDialogOpen(false);
       setExecutionToDelete(null);
       // 削除成功後にリフレッシュ

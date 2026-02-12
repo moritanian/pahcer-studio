@@ -18,6 +18,7 @@ import type { TestExecution } from '../../../schemas/execution';
 import { apiClient } from '../../api/client';
 
 interface VisualizerProps {
+  workspaceId: string;
   selectedExecution: TestExecution | null;
   onError: (message: string) => void;
 }
@@ -43,7 +44,7 @@ const waitGenerate = (
   });
 };
 
-const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) => {
+const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution, onError }) => {
   const visualizerIframeRef = useRef<HTMLIFrameElement>(null);
   const seedInputRef = useRef<HTMLInputElement>(null);
 
@@ -82,7 +83,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
   useEffect(() => {
     const init = async () => {
       try {
-        const res = await apiClient.asset.getVisualizerEntry();
+        const res = await apiClient.asset.getVisualizerEntry(workspaceId);
         setVisualizerReady(res.exists);
         setVisualizerPath(res.path);
       } catch (err) {
@@ -91,7 +92,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
       }
     };
     init();
-  }, []);
+  }, [workspaceId]);
 
   // visualizerReady が true になったタイミングでキャッシュキー更新
   useEffect(() => {
@@ -112,7 +113,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
         const shouldRestoreFocus = maintainFocus && document.activeElement === seedInputRef.current;
 
         try {
-          const output = await apiClient.execution.getTestCaseResult(selectedExecution.id, newSeed);
+          const output = await apiClient.execution.getTestCaseResult(
+            workspaceId,
+            selectedExecution.id,
+            newSeed,
+          );
 
           // ビジュアライザーのiframeを更新
           if (visualizerIframeRef.current) {
@@ -155,7 +160,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
         }
       }
     },
-    [selectedExecution, onError],
+    [selectedExecution, onError, workspaceId],
   );
 
   /**
@@ -218,7 +223,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
   const handleDeleteAssets = async () => {
     setConfirmOpen(false);
     try {
-      await apiClient.asset.deleteVisualizer();
+      await apiClient.asset.deleteVisualizer(workspaceId);
       setVisualizerReady(false);
       setCacheKey(Date.now());
       setVisualizerPath(null);
@@ -234,7 +239,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
     if (!urlInput || !urlValid) return;
     setDownloading(true);
     try {
-      const res = await apiClient.asset.downloadVisualizer(urlInput);
+      const res = await apiClient.asset.downloadVisualizer(workspaceId, urlInput);
       if (res?.success !== false) {
         await refreshEntry();
         setCacheKey(Date.now());
@@ -255,7 +260,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ selectedExecution, onError }) =
 
   // helper to refresh entry html after download
   const refreshEntry = async () => {
-    const res = await apiClient.asset.getVisualizerEntry();
+    const res = await apiClient.asset.getVisualizerEntry(workspaceId);
     setVisualizerReady(res.exists);
     setVisualizerPath(res.path);
   };

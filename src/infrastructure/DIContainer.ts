@@ -44,8 +44,8 @@ export class DIContainer {
     const workspaceRepository = new WorkspaceRepository();
     this.dependencies.set('IWorkspaceRepository', workspaceRepository);
 
-    // ExecutionRepositoryの設定（WorkspaceRepositoryに依存）
-    const executionRepository = new ExecutionRepository(workspaceRepository);
+    // ExecutionRepositoryの設定
+    const executionRepository = new ExecutionRepository();
     this.dependencies.set('IExecutionRepository', executionRepository);
   }
 
@@ -61,10 +61,10 @@ export class DIContainer {
     this.workspaceService = new WorkspaceService(settingsPath, workspaceRepository);
 
     // ConfigServiceを初期化
-    this.configService = new ConfigService(workspaceRepository);
+    this.configService = new ConfigService();
 
     // ScoreAnalysisServiceを初期化
-    this.scoreAnalysisService = new ScoreAnalysisService(this.configService);
+    this.scoreAnalysisService = new ScoreAnalysisService();
 
     // ExecutionServiceを初期化
     this.executionService = new ExecutionService(
@@ -76,11 +76,7 @@ export class DIContainer {
     );
 
     // AnalysisServiceを初期化
-    this.analysisService = new AnalysisService(
-      executionRepository,
-      workspaceRepository,
-      this.workspaceService,
-    );
+    this.analysisService = new AnalysisService(executionRepository, workspaceRepository);
   }
 
   public get<T>(key: string): T {

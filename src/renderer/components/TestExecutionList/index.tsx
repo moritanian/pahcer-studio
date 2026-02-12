@@ -9,7 +9,11 @@ import Visualizer from './Visualizer';
 import { apiClient } from '../../api/client';
 import { useExecutionEvents } from '../../contexts/EventSourceContext';
 
-const TestExecutionList: React.FC = () => {
+interface TestExecutionListProps {
+  workspaceId: string;
+}
+
+const TestExecutionList: React.FC<TestExecutionListProps> = ({ workspaceId }) => {
   // テスト実行リストの状態
   const [executions, setExecutions] = useState<TestExecution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +25,7 @@ const TestExecutionList: React.FC = () => {
   // テスト実行リストの取得
   const fetchExecutions = useCallback(async () => {
     try {
-      const response = await apiClient.execution.getAll();
+      const response = await apiClient.execution.getAll(workspaceId);
       setExecutions(response || []);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'テスト実行履歴の取得に失敗しました';
@@ -29,7 +33,7 @@ const TestExecutionList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [workspaceId]);
 
   // 初回読み込み
   useEffect(() => {
@@ -72,6 +76,7 @@ const TestExecutionList: React.FC = () => {
       <Allotment defaultSizes={[60, 40]}>
         <Allotment.Pane minSize={300}>
           <TestHistoryTable
+            workspaceId={workspaceId}
             executions={executions}
             loading={loading}
             selectedExecution={selectedExecution}
@@ -82,7 +87,11 @@ const TestExecutionList: React.FC = () => {
         </Allotment.Pane>
 
         <Allotment.Pane>
-          <Visualizer selectedExecution={selectedExecution} onError={handleError} />
+          <Visualizer
+            workspaceId={workspaceId}
+            selectedExecution={selectedExecution}
+            onError={handleError}
+          />
         </Allotment.Pane>
       </Allotment>
 

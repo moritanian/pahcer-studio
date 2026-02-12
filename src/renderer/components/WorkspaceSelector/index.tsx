@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -16,35 +17,58 @@ import {
   Box,
   Divider,
   Chip,
+  Container,
+  Paper,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import TerminalIcon from '@mui/icons-material/Terminal';
-import type { AppSettings, WorkspaceHistory } from '../../../services/WorkspaceService';
+import type { AppSettings, WorkspaceHistory } from '../../../schemas/workspace';
 import { apiClient } from '../../api/client';
 
 interface WorkspaceSelectorProps {
-  open: boolean;
-  onSelect: (path: string, useWsl: boolean) => void;
+  open?: boolean;
+  onSelect?: (path: string, useWsl: boolean) => void;
   onClose?: () => void;
   currentPath?: string;
+  standalone?: boolean;
 }
 
-const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
-  open,
+// スタンドアロン版（Router内で使用）
+const StandaloneWorkspaceSelector: React.FC<Omit<WorkspaceSelectorProps, 'standalone'>> = (
+  props,
+) => {
+  const navigate = useNavigate();
+  return <WorkspaceSelectorContent {...props} navigate={navigate} />;
+};
+
+// ダイアログ版（Router外で使用可能）
+const DialogWorkspaceSelector: React.FC<Omit<WorkspaceSelectorProps, 'standalone'>> = (props) => {
+  return <WorkspaceSelectorContent {...props} navigate={null} />;
+};
+
+interface WorkspaceSelectorContentProps extends Omit<WorkspaceSelectorProps, 'standalone'> {
+  navigate: ReturnType<typeof useNavigate> | null;
+}
+
+const WorkspaceSelectorContent: React.FC<WorkspaceSelectorContentProps> = ({
+  open = true,
   onSelect,
   onClose,
   currentPath,
+  navigate,
 }) => {
+  const standalone = navigate !== null;
+
   const [history, setHistory] = useState<WorkspaceHistory[]>([]);
   const [manualPath, setManualPath] = useState('');
   const [manualUseWsl, setManualUseWsl] = useState(false);
 
   // 設定（履歴）を読み込む
   useEffect(() => {
-    if (open) {
+    if (open || standalone) {
       loadHistory();
     }
-  }, [open]);
+  }, [open, standalone]);
 
   const loadHistory = async () => {
     try {
@@ -74,7 +98,7 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
     }
   };
 
-  const handleSelect = (path: string, useWsl: boolean) => {
+  const handleSelect = async (path: string, useWsl: boolean) => {
     // 履歴を更新
     const now = Date.now();
     const existingIndex = history.findIndex((h) => h.path === path);
@@ -90,9 +114,20 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
 
     // ソートして保存
     newHistory.sort((a, b) => b.lastOpened - a.lastOpened);
-    saveHistory(newHistory);
+    await saveHistory(newHistory);
 
-    onSelect(path, useWsl);
+    if (standalone) {
+      // スタンドアロンモードでは workspace を作成してナビゲート
+      try {
+        const workspace = await apiClient.workspace.create(path, useWsl);
+        navigate(`/w/${workspace.id}`);
+      } catch (error) {
+        console.error('Failed to create workspace:', error);
+      }
+    } else if (onSelect) {
+      // ダイアログモードでは onSelect コールバックを呼ぶ
+      onSelect(path, useWsl);
+    }
   };
 
   const handleDeleteHistory = (e: React.MouseEvent, pathToDelete: string) => {
@@ -112,125 +147,150 @@ const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({
     }
   };
 
+  const content = (
+    <Box>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+          新しいワークスペースを開く
+        </Typography>
+        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
+          ワークスペースのパスを入力してください（例: C:\Projects\MyProject または
+          \\wsl.localhost\Ubuntu\home\user\project）
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+          <TextField
+            fullWidth
+            label="パスを入力"
+            value={manualPath}
+            onChange={(e) => {
+              const path = e.target.value;
+              setManualPath(path);
+              // WSLパスの自動検出
+              if (isWslPath(path)) {
+                setManualUseWsl(true);
+              }
+            }}
+            placeholder="C:\Projects\MyProject または \\wsl.localhost\Ubuntu\home\user\project"
+            size="small"
+          />
+        </Box>
+        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={manualUseWsl}
+                onChange={(e) => setManualUseWsl(e.target.checked)}
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <TerminalIcon fontSize="small" />
+                <Typography variant="body2">WSLで開く</Typography>
+              </Box>
+            }
+          />
+          <Button variant="contained" onClick={handleManualSubmit} disabled={!manualPath}>
+            開く
+          </Button>
+        </Box>
+      </Box>
+
+      <Divider sx={{ my: 2 }} />
+
+      <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+        最近開いたワークスペース
+      </Typography>
+      <List>
+        {history.map((item) => (
+          <ListItem
+            key={item.path}
+            disablePadding
+            secondaryAction={
+              <IconButton
+                edge="end"
+                aria-label="delete"
+                onClick={(e) => handleDeleteHistory(e, item.path)}
+                size="small"
+              >
+                <DeleteIcon />
+              </IconButton>
+            }
+            sx={{
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1,
+              mb: 1,
+            }}
+          >
+            <ListItemButton
+              onClick={() => handleSelect(item.path, item.useWsl)}
+              selected={currentPath === item.path}
+              sx={{
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                },
+              }}
+            >
+              <ListItemText
+                primary={item.path}
+                secondary={new Date(item.lastOpened).toLocaleString()}
+                primaryTypographyProps={{
+                  variant: 'body1',
+                  fontWeight: 'medium',
+                }}
+              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
+                {item.useWsl && (
+                  <Chip
+                    icon={<TerminalIcon style={{ fontSize: 16 }} />}
+                    label="WSL"
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                  />
+                )}
+              </Box>
+            </ListItemButton>
+          </ListItem>
+        ))}
+        {history.length === 0 && (
+          <Typography variant="body2" color="textSecondary" align="center" sx={{ py: 4 }}>
+            履歴はありません
+          </Typography>
+        )}
+      </List>
+    </Box>
+  );
+
+  // スタンドアロンモードでは通常のページとして表示
+  if (standalone) {
+    return (
+      <Container maxWidth="sm" sx={{ mt: 8 }}>
+        <Paper elevation={3} sx={{ p: 4 }}>
+          <Typography variant="h4" gutterBottom>
+            ワークスペースを選択
+          </Typography>
+          {content}
+        </Paper>
+      </Container>
+    );
+  }
+
+  // ダイアログモードでは Dialog として表示
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth disableEscapeKeyDown={!onClose}>
       <DialogTitle>ワークスペースを選択</DialogTitle>
-      <DialogContent>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-            新しいワークスペースを開く
-          </Typography>
-          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
-            ワークスペースのパスを入力してください（例: C:\Projects\MyProject または
-            \\wsl.localhost\Ubuntu\home\user\project）
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-            <TextField
-              fullWidth
-              label="パスを入力"
-              value={manualPath}
-              onChange={(e) => {
-                const path = e.target.value;
-                setManualPath(path);
-                // WSLパスの自動検出
-                if (isWslPath(path)) {
-                  setManualUseWsl(true);
-                }
-              }}
-              placeholder="C:\Projects\MyProject または \\wsl.localhost\Ubuntu\home\user\project"
-              size="small"
-            />
-          </Box>
-          <Box
-            sx={{ mt: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-          >
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={manualUseWsl}
-                  onChange={(e) => setManualUseWsl(e.target.checked)}
-                />
-              }
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <TerminalIcon fontSize="small" />
-                  <Typography variant="body2">WSLで開く</Typography>
-                </Box>
-              }
-            />
-            <Button variant="contained" onClick={handleManualSubmit} disabled={!manualPath}>
-              開く
-            </Button>
-          </Box>
-        </Box>
-
-        <Divider sx={{ my: 2 }} />
-
-        <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-          最近開いたワークスペース
-        </Typography>
-        <List>
-          {history.map((item) => (
-            <ListItem
-              key={item.path}
-              disablePadding
-              secondaryAction={
-                <IconButton
-                  edge="end"
-                  aria-label="delete"
-                  onClick={(e) => handleDeleteHistory(e, item.path)}
-                  size="small"
-                >
-                  <DeleteIcon />
-                </IconButton>
-              }
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                mb: 1,
-              }}
-            >
-              <ListItemButton
-                onClick={() => handleSelect(item.path, item.useWsl)}
-                selected={currentPath === item.path}
-                sx={{
-                  '&:hover': {
-                    backgroundColor: 'action.hover',
-                  },
-                }}
-              >
-                <ListItemText
-                  primary={item.path}
-                  secondary={new Date(item.lastOpened).toLocaleString()}
-                  primaryTypographyProps={{
-                    variant: 'body1',
-                    fontWeight: 'medium',
-                  }}
-                />
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
-                  {item.useWsl && (
-                    <Chip
-                      icon={<TerminalIcon style={{ fontSize: 16 }} />}
-                      label="WSL"
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                    />
-                  )}
-                </Box>
-              </ListItemButton>
-            </ListItem>
-          ))}
-          {history.length === 0 && (
-            <Typography variant="body2" color="textSecondary" align="center" sx={{ py: 4 }}>
-              履歴はありません
-            </Typography>
-          )}
-        </List>
-      </DialogContent>
+      <DialogContent>{content}</DialogContent>
     </Dialog>
   );
+};
+
+// メインのエクスポートコンポーネント（standaloneプロパティで切り替え）
+const WorkspaceSelector: React.FC<WorkspaceSelectorProps> = ({ standalone, ...props }) => {
+  if (standalone) {
+    return <StandaloneWorkspaceSelector {...props} />;
+  }
+  return <DialogWorkspaceSelector {...props} />;
 };
 
 export default WorkspaceSelector;

@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
+import { createHash } from 'crypto';
 
 /**
  * WSLおよびパス処理に関するヘルパークラス
@@ -8,6 +9,35 @@ import * as os from 'os';
 export class PathHelper {
   /** pahcer-studio のデータディレクトリ名 */
   private static readonly PAHCER_STUDIO_DIR = 'pahcer-studio';
+
+  /**
+   * ディレクトリパスからworkspace IDを生成する
+   * 形式: [sanitized-dirname]-[8-char-hash]
+   * 例: /home/user/ahc041 → ahc041-a1b2c3d4
+   *
+   * @param targetDirectory workspace のディレクトリパス
+   * @param hashLength ハッシュの長さ（デフォルト: 8）
+   * @returns workspace ID
+   */
+  static generateWorkspaceId(targetDirectory: string, hashLength: number = 8): string {
+    // パスを正規化（クロスプラットフォーム対応）
+    const normalizedPath = path.normalize(targetDirectory);
+
+    // ディレクトリ名を取得（人間が読みやすい）
+    const name = path.basename(normalizedPath);
+
+    // ファイルシステム安全な形式にサニタイズ
+    const sanitized = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    // 決定的なハッシュを生成（衝突回避）
+    const hash = createHash('sha256').update(normalizedPath).digest('hex').substring(0, hashLength);
+
+    return `${sanitized}-${hash}`;
+  }
 
   /**
    * チルダ（~）をホームディレクトリに展開する

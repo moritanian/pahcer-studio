@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { TestExecutionRequest, Workspace } from '../schemas/execution';
+import type { TestExecutionRequest } from '../schemas/execution';
+import type { Workspace } from '../schemas/workspace';
 import { PathHelper } from './PathHelper';
 
 export interface PacherExecutionResult {

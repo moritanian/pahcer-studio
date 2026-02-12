@@ -6,11 +6,10 @@ import {
   TestExecutionSchema,
   type TestCase,
 } from '../schemas/execution';
+import type { Workspace } from '../schemas/workspace';
 import type { IExecutionRepository } from './IExecutionRepository';
-import type { IWorkspaceRepository } from './IWorkspaceRepository';
 import { PathHelper } from '../infrastructure/PathHelper';
 import { ScoreAnalysisService } from '../services/ScoreAnalysisService';
-import { ConfigService } from '../services/ConfigService';
 import type { SummaryJson, SummaryCaseRaw } from '../types/summary';
 
 /**
@@ -19,53 +18,27 @@ import type { SummaryJson, SummaryCaseRaw } from '../types/summary';
  */
 export class ExecutionRepository implements IExecutionRepository {
   private scoreAnalysisService: ScoreAnalysisService;
-  private workspaceRepository: IWorkspaceRepository;
 
-  constructor(workspaceRepository: IWorkspaceRepository) {
-    this.scoreAnalysisService = new ScoreAnalysisService(new ConfigService(workspaceRepository));
-    this.workspaceRepository = workspaceRepository;
+  constructor() {
+    this.scoreAnalysisService = new ScoreAnalysisService();
   }
 
   /**
-   * resultsDirectory を動的に取得する
+   * resultsDirectory を取得する
    */
-  private getResultsDirectory(): string {
-    const workspace = this.workspaceRepository.getWorkspace();
-    if (!workspace) {
-      throw new Error('Workspace is not selected');
-    }
+  private getResultsDirectory(workspace: Workspace): string {
     return PathHelper.getResultsDirectory(workspace.targetDirectory);
   }
 
-  private ensureDirectory(): void {
-    const dir = this.getResultsDirectory();
-    // ディレクトリの作成に失敗しても初期化段階では致命的でないため、ログのみに留める
-    fs.mkdir(dir, { recursive: true }).catch((err) =>
-      console.error('Failed to create results directory:', err),
-    );
-  }
-
-  private getExecutionDirPath(id: string): string {
-    const workspace = this.workspaceRepository.getWorkspace();
-    if (!workspace) {
-      throw new Error('Workspace is not selected');
-    }
+  private getExecutionDirPath(id: string, workspace: Workspace): string {
     return PathHelper.getExecutionDirectory(workspace.targetDirectory, id);
   }
 
-  private getExecutionInfoPath(id: string): string {
-    const workspace = this.workspaceRepository.getWorkspace();
-    if (!workspace) {
-      throw new Error('Workspace is not selected');
-    }
+  private getExecutionInfoPath(id: string, workspace: Workspace): string {
     return PathHelper.getExecutionInfoPath(workspace.targetDirectory, id);
   }
 
-  getSummaryPath(id: string): string {
-    const workspace = this.workspaceRepository.getWorkspace();
-    if (!workspace) {
-      throw new Error('Workspace is not selected');
-    }
+  getSummaryPath(id: string, workspace: Workspace): string {
     return PathHelper.getSummaryPath(workspace.targetDirectory, id);
   }
 
@@ -96,11 +69,11 @@ export class ExecutionRepository implements IExecutionRepository {
   /**
    * テスト実行情報（execution_info.json）を保存/更新する
    */
-  async save(execution: TestExecution): Promise<void> {
-    const executionDir = this.getExecutionDirPath(execution.id);
+  async save(execution: TestExecution, workspace: Workspace): Promise<void> {
+    const executionDir = this.getExecutionDirPath(execution.id, workspace);
     await fs.mkdir(executionDir, { recursive: true });
 
-    const filePath = this.getExecutionInfoPath(execution.id);
+    const filePath = this.getExecutionInfoPath(execution.id, workspace);
     const validated = TestExecutionSchema.safeParse(execution);
     if (!validated.success) {
       throw new Error(`Invalid execution object supplied for id ${execution.id}`);
@@ -113,9 +86,9 @@ export class ExecutionRepository implements IExecutionRepository {
    * IDでテスト実行情報を取得する。
    * execution_info.json と summary.json をマージして返す。
    */
-  async findById(id: string): Promise<TestExecution | null> {
+  async findById(id: string, workspace: Workspace): Promise<TestExecution | null> {
     // execution_info.json
-    const infoData = await this.readJsonFile<unknown>(this.getExecutionInfoPath(id));
+    const infoData = await this.readJsonFile<unknown>(this.getExecutionInfoPath(id, workspace));
     let execution: TestExecution | null = null;
 
     if (infoData) {
@@ -128,7 +101,7 @@ export class ExecutionRepository implements IExecutionRepository {
     }
 
     // summary.json
-    const summaryData = await this.readJsonFile<SummaryJson>(this.getSummaryPath(id));
+    const summaryData = await this.readJsonFile<SummaryJson>(this.getSummaryPath(id, workspace));
     if (summaryData) {
       if (!execution) {
         execution = {
@@ -143,11 +116,11 @@ export class ExecutionRepository implements IExecutionRepository {
           maxExecutionTime: null,
         } as TestExecution;
       }
-      execution = await this.mergeWithSummary(execution, summaryData);
+      execution = await this.mergeWithSummary(execution, summaryData, workspace);
     }
 
     // ディレクトリ自体が存在しない場合は null
-    if (!(await this.exists(this.getExecutionDirPath(id)))) {
+    if (!(await this.exists(this.getExecutionDirPath(id, workspace)))) {
       return null;
     }
 
@@ -157,12 +130,12 @@ export class ExecutionRepository implements IExecutionRepository {
   /**
    * テストケースの出力ファイルパスを取得
    */
-  private getTestCaseOutputFilePath(executionId: string, seed: number): string {
+  private getTestCaseOutputFilePath(
+    executionId: string,
+    seed: number,
+    workspace: Workspace,
+  ): string {
     const outputFileName = `${String(seed).padStart(4, '0')}.txt`;
-    const workspace = this.workspaceRepository.getWorkspace();
-    if (!workspace) {
-      throw new Error('Workspace is not selected');
-    }
     return path.join(
       PathHelper.getCaseOutputsDirectory(workspace.targetDirectory, executionId),
       outputFileName,
@@ -172,20 +145,23 @@ export class ExecutionRepository implements IExecutionRepository {
   /**
    * 実行IDでテストケース一覧を取得する
    */
-  async findTestCasesByExecutionId(id: string): Promise<TestCase[]> {
-    const summaryData = await this.readJsonFile<SummaryJson>(this.getSummaryPath(id));
+  async findTestCasesByExecutionId(id: string, workspace: Workspace): Promise<TestCase[]> {
+    const summaryData = await this.readJsonFile<SummaryJson>(this.getSummaryPath(id, workspace));
     if (!summaryData?.cases || !Array.isArray(summaryData.cases)) {
       return [];
     }
 
-    return await this.scoreAnalysisService.enrichTestCasesWithRelativeScore(summaryData.cases);
+    return await this.scoreAnalysisService.enrichTestCasesWithRelativeScore(
+      summaryData.cases,
+      workspace,
+    );
   }
 
   /**
    * 実行IDとシード値でテストケースの結果（標準出力）を取得する
    */
-  async findTestCaseResult(id: string, seed: number): Promise<string | null> {
-    const summaryData = await this.readJsonFile<SummaryJson>(this.getSummaryPath(id));
+  async findTestCaseResult(id: string, seed: number, workspace: Workspace): Promise<string | null> {
+    const summaryData = await this.readJsonFile<SummaryJson>(this.getSummaryPath(id, workspace));
     if (!summaryData?.cases || !Array.isArray(summaryData.cases)) {
       return null;
     }
@@ -193,7 +169,7 @@ export class ExecutionRepository implements IExecutionRepository {
     const caseIndex = summaryData.cases.findIndex((c: SummaryCaseRaw) => c.seed === seed);
     if (caseIndex === -1) return null;
 
-    const outputFilePath = this.getTestCaseOutputFilePath(id, seed);
+    const outputFilePath = this.getTestCaseOutputFilePath(id, seed, workspace);
 
     try {
       return await fs.readFile(outputFilePath, 'utf8');
@@ -206,15 +182,15 @@ export class ExecutionRepository implements IExecutionRepository {
   /**
    * 全てのテスト実行情報を取得する
    */
-  async findAll(): Promise<TestExecution[]> {
+  async findAll(workspace: Workspace): Promise<TestExecution[]> {
     try {
-      const resultsDir = this.getResultsDirectory();
+      const resultsDir = this.getResultsDirectory(workspace);
       const entries = await fs.readdir(resultsDir, { withFileTypes: true });
       const executionIds = entries.filter((e) => e.isDirectory()).map((e) => e.name);
 
       const executions = await Promise.all(
         executionIds.map((id) =>
-          this.findById(id).catch((err) => {
+          this.findById(id, workspace).catch((err) => {
             console.error(`Failed to load execution ${id}:`, err);
             return null;
           }),
@@ -239,8 +215,8 @@ export class ExecutionRepository implements IExecutionRepository {
   /**
    * 実行ステータスを更新する
    */
-  async updateStatus(id: string, status: TestExecutionStatus): Promise<void> {
-    const execution = await this.findById(id);
+  async updateStatus(id: string, status: TestExecutionStatus, workspace: Workspace): Promise<void> {
+    const execution = await this.findById(id, workspace);
     if (!execution) {
       // ステータス更新時に実行が見つからない場合、警告を出すか、何もしない。
       // ここでは何もしないことを選択するが、プロジェクトによってはエラーを投げるべきかもしれない。
@@ -248,14 +224,18 @@ export class ExecutionRepository implements IExecutionRepository {
       return;
     }
     execution.status = status;
-    await this.save(execution);
+    await this.save(execution, workspace);
   }
 
   /**
    * 実行進行状況を更新する
    */
-  async updateProgress(id: string, data: Partial<TestExecution>): Promise<void> {
-    let execution = await this.findById(id);
+  async updateProgress(
+    id: string,
+    data: Partial<TestExecution>,
+    workspace: Workspace,
+  ): Promise<void> {
+    let execution = await this.findById(id, workspace);
     if (!execution) {
       // 実行情報がない場合は、最低限の情報で新規作成する
       execution = {
@@ -272,15 +252,15 @@ export class ExecutionRepository implements IExecutionRepository {
     }
 
     Object.assign(execution, data);
-    await this.save(execution);
+    await this.save(execution, workspace);
   }
 
   /**
    * 実行を削除する
    */
-  async delete(id: string): Promise<void> {
+  async delete(id: string, workspace: Workspace): Promise<void> {
     try {
-      const executionDir = this.getExecutionDirPath(id);
+      const executionDir = this.getExecutionDirPath(id, workspace);
       await fs.rm(executionDir, { recursive: true, force: true });
     } catch (error) {
       throw new Error(`Failed to delete execution directory ${id}: ${error}`);
@@ -293,9 +273,10 @@ export class ExecutionRepository implements IExecutionRepository {
   private async mergeWithSummary(
     execution: TestExecution,
     summary: SummaryJson,
+    workspace: Workspace,
   ): Promise<TestExecution> {
     // ScoreAnalysisServiceを使って統計情報を計算
-    const stats = await this.scoreAnalysisService.calculateExecutionStats(summary);
+    const stats = await this.scoreAnalysisService.calculateExecutionStats(summary, workspace);
 
     return {
       ...execution,

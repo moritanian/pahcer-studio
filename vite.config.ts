@@ -10,7 +10,7 @@ export default defineConfig({
     outDir: '../../dist/renderer',
     emptyOutDir: true,
   },
-  base: './',
+  base: '/',
   server: {
     middlewareMode: true,
   },

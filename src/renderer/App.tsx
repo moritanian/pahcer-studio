@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   AppBar,
   Box,
@@ -17,8 +18,7 @@ import TestExecutionForm from './components/TestExecutionForm';
 import TestExecutionList from './components/TestExecutionList';
 import ScoreAnalysis from './components/ScoreAnalysis';
 import WorkspaceSelector from './components/WorkspaceSelector';
-import type { AppSettings } from '../services/WorkspaceService';
-import type { Workspace } from '../schemas/execution';
+import type { Workspace } from '../schemas/workspace';
 import { apiClient } from './api/client';
 import { EventSourceProvider } from './contexts/EventSourceContext';
 
@@ -98,41 +98,47 @@ const theme = createTheme({
 });
 
 function App() {
+  const { workspaceId } = useParams<{ workspaceId: string }>();
+  const navigate = useNavigate();
+
   // 現在選択されているタブのインデックス
   const [tabIndex, setTabIndex] = useState(0);
 
   // ワークスペースの状態
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // 初期化時に設定（履歴）を読み込む
+  // URL パラメータから workspace をロード
   useEffect(() => {
-    const initWorkspace = async () => {
-      try {
-        const settings = (await apiClient.settings.get()) as AppSettings;
-        const history = settings.projects;
-        if (history && history.length > 0) {
-          // 最新の履歴（最初の要素）を選択
-          const latest = history[0];
-          setCurrentWorkspace({ targetDirectory: latest.path, useWsl: latest.useWsl });
+    const loadWorkspace = async () => {
+      if (!workspaceId) {
+        // workspace ID がない場合は一覧ページへリダイレクト
+        navigate('/workspaces', { replace: true });
+        return;
+      }
 
-          // バックエンドにワークスペースを設定
-          await apiClient.workspace.set({
-            targetDirectory: latest.path,
-            useWsl: latest.useWsl,
-          });
-        } else {
-          // 履歴がない場合はセレクターを開く
-          setIsSelectorOpen(true);
-        }
+      try {
+        setLoading(true);
+        // workspace ID から workspace を取得
+        const workspace = await apiClient.workspace.get(workspaceId);
+        setCurrentWorkspace(workspace);
       } catch (error) {
-        console.error('Failed to load settings:', error);
-        setIsSelectorOpen(true);
+        console.error('Failed to load workspace:', error);
+        // workspace が見つからない場合は一覧ページへ
+        navigate('/workspaces', { replace: true });
+      } finally {
+        setLoading(false);
       }
     };
 
-    initWorkspace();
-  }, []);
+    loadWorkspace();
+  }, [workspaceId, navigate]);
+
+  // ローディング中は何も表示しない
+  if (loading || !currentWorkspace) {
+    return null;
+  }
 
   // タブ変更ハンドラー
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -141,14 +147,14 @@ function App() {
 
   // ワークスペース選択ハンドラー
   const handleWorkspaceSelect = async (path: string, useWsl: boolean) => {
-    setCurrentWorkspace({ targetDirectory: path, useWsl });
-    setIsSelectorOpen(false);
-
-    // バックエンドにワークスペース変更を通知
     try {
-      await apiClient.workspace.set({ targetDirectory: path, useWsl });
+      // workspace を作成または取得
+      const workspace = await apiClient.workspace.create(path, useWsl);
+      setIsSelectorOpen(false);
+      // workspace ID を含む URL にナビゲート
+      navigate(`/w/${workspace.id}`);
     } catch (error) {
-      console.error('Failed to set workspace:', error);
+      console.error('Failed to create workspace:', error);
     }
   };
 
@@ -213,13 +219,13 @@ function App() {
           {currentWorkspace ? (
             <>
               <TabPanel value={tabIndex} index={0}>
-                <TestExecutionForm />
+                <TestExecutionForm workspaceId={currentWorkspace.id} />
               </TabPanel>
               <TabPanel value={tabIndex} index={1}>
-                <TestExecutionList key={currentWorkspace.targetDirectory} />
+                <TestExecutionList workspaceId={currentWorkspace.id} key={currentWorkspace.id} />
               </TabPanel>
               <TabPanel value={tabIndex} index={2}>
-                <ScoreAnalysis key={currentWorkspace.targetDirectory} />
+                <ScoreAnalysis workspaceId={currentWorkspace.id} key={currentWorkspace.id} />
               </TabPanel>
             </>
           ) : null}

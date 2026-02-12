@@ -1,18 +1,18 @@
-import { TestExecution, TestExecutionRequest, Workspace, TestCase } from '../../schemas/execution';
+import { TestExecution, TestExecutionRequest, TestCase } from '../../schemas/execution';
+import { Workspace, AppSettings } from '../../schemas/workspace';
 import {
   AnalysisRequest,
   AnalysisResponse,
   UpdateAnalysisRequest,
   AnalysisSettings,
 } from '../../schemas/analysis';
-import { AppSettings } from '../../services/WorkspaceService';
 
 const API_BASE = '/api';
 
 export const apiClient = {
   execution: {
-    start: async (request: TestExecutionRequest): Promise<{ id: string }> => {
-      const res = await fetch(`${API_BASE}/execution/start`, {
+    start: async (workspaceId: string, request: TestExecutionRequest): Promise<{ id: string }> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/executions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -20,51 +20,76 @@ export const apiClient = {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    stop: async (executionId: string): Promise<{ success: boolean }> => {
-      const res = await fetch(`${API_BASE}/execution/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ executionId }),
-      });
+    stop: async (workspaceId: string, executionId: string): Promise<{ success: boolean }> => {
+      const res = await fetch(
+        `${API_BASE}/workspaces/${workspaceId}/executions/${executionId}/stop`,
+        {
+          method: 'POST',
+        },
+      );
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    getStatus: async (executionId: string): Promise<TestExecution | null> => {
-      const res = await fetch(`${API_BASE}/execution/status/${executionId}`);
+    getStatus: async (workspaceId: string, executionId: string): Promise<TestExecution | null> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/executions/${executionId}`);
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    getAll: async (): Promise<TestExecution[]> => {
-      const res = await fetch(`${API_BASE}/execution/all`);
+    getAll: async (workspaceId: string): Promise<TestExecution[]> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/executions`);
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    getTestCases: async (executionId: string): Promise<TestCase[]> => {
-      const res = await fetch(`${API_BASE}/execution/${executionId}/cases`);
+    getTestCases: async (workspaceId: string, executionId: string): Promise<TestCase[]> => {
+      const res = await fetch(
+        `${API_BASE}/workspaces/${workspaceId}/executions/${executionId}/cases`,
+      );
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    getTestCaseResult: async (executionId: string, seed: number): Promise<string | null> => {
-      const res = await fetch(`${API_BASE}/execution/${executionId}/case/${seed}`);
+    getTestCaseResult: async (
+      workspaceId: string,
+      executionId: string,
+      seed: number,
+    ): Promise<string | null> => {
+      const res = await fetch(
+        `${API_BASE}/workspaces/${workspaceId}/executions/${executionId}/cases/${seed}`,
+      );
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    delete: async (executionId: string): Promise<void> => {
-      const res = await fetch(`${API_BASE}/execution/${executionId}`, {
+    delete: async (workspaceId: string, executionId: string): Promise<void> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/executions/${executionId}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error(await res.text());
     },
   },
   workspace: {
-    set: async (workspace: Workspace): Promise<{ success: boolean }> => {
-      const res = await fetch(`${API_BASE}/workspace/set`, {
+    list: async (): Promise<Workspace[]> => {
+      const res = await fetch(`${API_BASE}/workspaces`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    create: async (targetDirectory: string, useWsl?: boolean): Promise<Workspace> => {
+      const res = await fetch(`${API_BASE}/workspaces`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(workspace),
+        body: JSON.stringify({ targetDirectory, useWsl }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
+    },
+    get: async (workspaceId: string): Promise<Workspace> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    delete: async (workspaceId: string): Promise<void> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error(await res.text());
     },
   },
   settings: {
@@ -84,8 +109,8 @@ export const apiClient = {
     },
   },
   analysis: {
-    analyze: async (request: AnalysisRequest): Promise<AnalysisResponse> => {
-      const res = await fetch(`${API_BASE}/analysis/analyze`, {
+    analyze: async (workspaceId: string, request: AnalysisRequest): Promise<AnalysisResponse> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/analysis/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -94,6 +119,7 @@ export const apiClient = {
       return res.json();
     },
     updateCache: async (
+      workspaceId: string,
       request: UpdateAnalysisRequest,
     ): Promise<{
       successful: boolean;
@@ -101,7 +127,7 @@ export const apiClient = {
       extractedFeatures?: boolean;
       message?: string;
     }> => {
-      const res = await fetch(`${API_BASE}/analysis/updateCache`, {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/analysis/updateCache`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
@@ -109,13 +135,16 @@ export const apiClient = {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    getSettings: async (): Promise<AnalysisSettings> => {
-      const res = await fetch(`${API_BASE}/analysis/settings`);
+    getSettings: async (workspaceId: string): Promise<AnalysisSettings> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/analysis/settings`);
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    saveSettings: async (featureFormat: string): Promise<{ success: boolean }> => {
-      const res = await fetch(`${API_BASE}/analysis/settings`, {
+    saveSettings: async (
+      workspaceId: string,
+      featureFormat: string,
+    ): Promise<{ success: boolean }> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/analysis/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ featureFormat }),
@@ -125,23 +154,28 @@ export const apiClient = {
     },
   },
   asset: {
-    deleteVisualizer: async (): Promise<{ success: boolean; error?: string }> => {
-      const res = await fetch(`${API_BASE}/asset/visualizer`, {
+    deleteVisualizer: async (
+      workspaceId: string,
+    ): Promise<{ success: boolean; error?: string }> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/asset/visualizer`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    getVisualizerEntry: async (): Promise<{ exists: boolean; path: string | null }> => {
-      const res = await fetch(`${API_BASE}/asset/visualizer/entry`);
+    getVisualizerEntry: async (
+      workspaceId: string,
+    ): Promise<{ exists: boolean; path: string | null }> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/asset/visualizer/entry`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       return data;
     },
     downloadVisualizer: async (
+      workspaceId: string,
       url: string,
     ): Promise<{ success: boolean; urls?: string[]; error?: string }> => {
-      const res = await fetch(`${API_BASE}/asset/visualizer/download`, {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/asset/visualizer/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),

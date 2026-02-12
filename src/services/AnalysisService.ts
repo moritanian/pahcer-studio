@@ -14,7 +14,7 @@ import { PathHelper } from '../infrastructure/PathHelper';
 import type { ExecutionDataMinimal, ExecutionSeedResult } from '../types/summary';
 import type { IExecutionRepository } from '../repositories/IExecutionRepository';
 import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
-import type { WorkspaceService } from './WorkspaceService';
+import type { Workspace } from '../schemas/workspace';
 
 /**
  * AnalysisService
@@ -30,63 +30,47 @@ import type { WorkspaceService } from './WorkspaceService';
 export class AnalysisService {
   private executionRepository: IExecutionRepository;
   private workspaceRepository: IWorkspaceRepository;
-  private workspaceService: WorkspaceService;
   private inputFeaturesCache: Map<string, InputFeature> = new Map();
   private bestScoresCache: Map<string, number> = new Map();
 
   constructor(
     executionRepository: IExecutionRepository,
     workspaceRepository: IWorkspaceRepository,
-    workspaceService: WorkspaceService,
   ) {
     this.executionRepository = executionRepository;
     this.workspaceRepository = workspaceRepository;
-    this.workspaceService = workspaceService;
-
-    // 初期化時はキャッシュを読み込まない（ワークスペースが確定してから読み込む）
   }
 
-  /**
-   * 現在のワークスペースのルートディレクトリを取得
-   */
-  private getWorkspaceDir(): string {
-    const workspace = this.workspaceService.getWorkspace();
-    if (!workspace) {
-      throw new Error('Workspace not set. Please select a workspace first.');
-    }
-    return workspace.targetDirectory;
+  private getInputDir(workspace: Workspace): string {
+    return PathHelper.getInputDirectory(workspace.targetDirectory);
   }
 
-  private getInputDir(): string {
-    return PathHelper.getInputDirectory(this.getWorkspaceDir());
+  private getOutputDir(workspace: Workspace): string {
+    return PathHelper.getResultsDirectory(workspace.targetDirectory);
   }
 
-  private getOutputDir(): string {
-    return PathHelper.getResultsDirectory(this.getWorkspaceDir());
+  private getDataDir(workspace: Workspace): string {
+    return PathHelper.getAnalysisDataDirectory(workspace.targetDirectory);
   }
 
-  private getDataDir(): string {
-    return PathHelper.getAnalysisDataDirectory(this.getWorkspaceDir());
+  private getFeatureCachePath(workspace: Workspace): string {
+    return path.join(this.getDataDir(workspace), 'input_features.json');
   }
 
-  private getFeatureCachePath(): string {
-    return path.join(this.getDataDir(), 'input_features.json');
+  private getSettingsPath(workspace: Workspace): string {
+    return path.join(this.getDataDir(workspace), 'analysis_settings.json');
   }
 
-  private getSettingsPath(): string {
-    return path.join(this.getDataDir(), 'analysis_settings.json');
-  }
-
-  private getBestScoresPath(): string {
-    return PathHelper.getBestScoresPath(this.getWorkspaceDir());
+  private getBestScoresPath(workspace: Workspace): string {
+    return PathHelper.getBestScoresPath(workspace.targetDirectory);
   }
 
   /**
    * キャッシュが読み込まれているか確認し、未読み込みなら読み込む
    */
-  private ensureCacheLoaded(): void {
+  private ensureCacheLoaded(workspace: Workspace): void {
     if (this.inputFeaturesCache.size === 0 && this.bestScoresCache.size === 0) {
-      this.reloadCache();
+      this.reloadCache(workspace);
     }
   }
 
@@ -95,12 +79,12 @@ export class AnalysisService {
    *   - 入力特徴量キャッシュ (input_features.json)
    *   - 最高得点キャッシュ   (best_scores.json)
    */
-  private reloadCache(): void {
+  private reloadCache(workspace: Workspace): void {
     // キャッシュをクリア
     this.inputFeaturesCache.clear();
     this.bestScoresCache.clear();
 
-    const dataDir = this.getDataDir();
+    const dataDir = this.getDataDir(workspace);
     // 必要なディレクトリの作成
     if (!fs.existsSync(dataDir)) {
       try {
@@ -111,7 +95,7 @@ export class AnalysisService {
     }
 
     // 入力特徴量キャッシュの読み込み
-    const featureCachePath = this.getFeatureCachePath();
+    const featureCachePath = this.getFeatureCachePath(workspace);
     if (fs.existsSync(featureCachePath)) {
       try {
         const data = JSON.parse(fs.readFileSync(featureCachePath, 'utf8'));
@@ -124,7 +108,7 @@ export class AnalysisService {
     }
 
     // 最高得点キャッシュの読み込み
-    const bestScoresPath = this.getBestScoresPath();
+    const bestScoresPath = this.getBestScoresPath(workspace);
     if (fs.existsSync(bestScoresPath)) {
       try {
         const data = JSON.parse(fs.readFileSync(bestScoresPath, 'utf8'));
@@ -141,12 +125,12 @@ export class AnalysisService {
    * 現在の分析設定を取得 (featureFormat のみ)
    *   優先順位: 設定ファイル > 入力キャッシュ推測 > デフォルト
    */
-  getSettings(): { featureFormat: string } {
-    this.ensureCacheLoaded();
+  getSettings(workspace: Workspace): { featureFormat: string } {
+    this.ensureCacheLoaded(workspace);
 
     // 既定値（後でキャッシュから置換する可能性あり）
     let featureFormat = '';
-    const settingsPath = this.getSettingsPath();
+    const settingsPath = this.getSettingsPath(workspace);
 
     // 設定ファイルがあれば読み込む
     if (fs.existsSync(settingsPath)) {
@@ -187,10 +171,10 @@ export class AnalysisService {
    * featureFormat を settings.json に保存
    * エラー時は直前の設定を返して UI 側で扱いやすくする
    */
-  saveSettings(featureFormat: string): { featureFormat: string } {
-    this.ensureCacheLoaded();
+  saveSettings(workspace: Workspace, featureFormat: string): { featureFormat: string } {
+    this.ensureCacheLoaded(workspace);
     const settings = { featureFormat };
-    const settingsPath = this.getSettingsPath();
+    const settingsPath = this.getSettingsPath(workspace);
 
     try {
       // ディレクトリが存在することを確認
@@ -204,15 +188,15 @@ export class AnalysisService {
       return settings;
     } catch (error) {
       console.error('設定ファイルの保存に失敗しました:', error);
-      return this.getSettings();
+      return this.getSettings(workspace);
     }
   }
 
   /** 入力特徴量キャッシュを disk へ書き戻す */
-  private saveFeatureCache(): void {
+  private saveFeatureCache(workspace: Workspace): void {
     try {
       const featureData = Object.fromEntries(this.inputFeaturesCache);
-      const featureCachePath = this.getFeatureCachePath();
+      const featureCachePath = this.getFeatureCachePath(workspace);
 
       // ディレクトリが存在することを確認
       const dir = path.dirname(featureCachePath);
@@ -276,9 +260,12 @@ export class AnalysisService {
    * executionId から summary.json と execution_info.json を読み取り
    * seed→score の辞書形式へ整形
    */
-  private async getExecutionData(executionId: string): Promise<ExecutionDataMinimal> {
+  private async getExecutionData(
+    workspace: Workspace,
+    executionId: string,
+  ): Promise<ExecutionDataMinimal> {
     try {
-      const outputDir = this.getOutputDir();
+      const outputDir = this.getOutputDir(workspace);
 
       // 実行情報のJSONを読み取り
       const infoPath = path.join(outputDir, executionId, 'execution_info.json');
@@ -328,11 +315,14 @@ export class AnalysisService {
   /**
    * 入力特徴量キャッシュを再生成 (tools/in/*.txt をフルスキャン)
    */
-  async updateFeatureCache(featureFormat: string): Promise<UpdateAnalysisResponse> {
-    this.ensureCacheLoaded();
+  async updateFeatureCache(
+    workspace: Workspace,
+    featureFormat: string,
+  ): Promise<UpdateAnalysisResponse> {
+    this.ensureCacheLoaded(workspace);
     try {
       // 入力ディレクトリのテストケースファイルを検索（クロスプラットフォーム対応）
-      const inputDir = this.getInputDir();
+      const inputDir = this.getInputDir(workspace);
       console.log('Searching for input files in:', inputDir);
       const inputFiles = glob.sync('*.txt', { cwd: inputDir, absolute: true });
 
@@ -349,7 +339,7 @@ export class AnalysisService {
       }
 
       // 入力特徴量キャッシュの保存のみ実施
-      this.saveFeatureCache();
+      this.saveFeatureCache(workspace);
 
       const featureKeys = new Set<string>();
       if (this.inputFeaturesCache.size > 0) {
@@ -381,19 +371,19 @@ export class AnalysisService {
    *   2) BestScores を取得して相対スコアを計算
    *   3) AnalysisResponse を組み立てて返却
    */
-  async analyze(request: AnalysisRequest): Promise<AnalysisResponse> {
-    this.ensureCacheLoaded();
+  async analyze(workspace: Workspace, request: AnalysisRequest): Promise<AnalysisResponse> {
+    this.ensureCacheLoaded(workspace);
     try {
       // 特徴量キャッシュを更新（キャッシュがない場合のみ）
       if (this.inputFeaturesCache.size === 0) {
-        await this.updateFeatureCache(request.featureFormat);
+        await this.updateFeatureCache(workspace, request.featureFormat);
       }
 
       // ★ 相対スコア計算用にベストスコアと目的関数を取得
-      const configService = new ConfigService(this.workspaceRepository);
+      const configService = new ConfigService();
       const [bestScores, objective] = await Promise.all([
-        configService.getBestScores(),
-        configService.getObjective(),
+        configService.getBestScores(workspace),
+        configService.getObjective(workspace),
       ]);
 
       // 入力特徴量リストの作成
@@ -409,7 +399,7 @@ export class AnalysisService {
       const scoreDataList: ScoreData[] = [];
 
       for (const executionId of request.executionIds) {
-        const executionData = await this.getExecutionData(executionId);
+        const executionData = await this.getExecutionData(workspace, executionId);
 
         if (Object.keys(executionData.seeds).length === 0) {
           continue;

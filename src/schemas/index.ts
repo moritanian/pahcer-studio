@@ -3,6 +3,7 @@ export * from './base';
 
 // 機能別スキーマ
 export * from './filesystem';
+export * from './workspace';
 export * from './execution';
 // export * from "./network"; // 将来追加
 // export * from "./system"; // 将来追加

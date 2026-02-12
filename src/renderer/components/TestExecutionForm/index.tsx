@@ -28,7 +28,11 @@ import type { TestExecution, TestExecutionRequest, LogMessage } from '../../../s
 import { apiClient } from '../../api/client';
 import { useExecutionEvents } from '../../contexts/EventSourceContext';
 
-const TestExecutionForm: React.FC = () => {
+interface TestExecutionFormProps {
+  workspaceId: string;
+}
+
+const TestExecutionForm: React.FC<TestExecutionFormProps> = ({ workspaceId }) => {
   // フォームの状態
   const [comment, setComment] = useState('');
   const [shuffle, setShuffle] = useState(false);
@@ -117,13 +121,13 @@ const TestExecutionForm: React.FC = () => {
       };
 
       // APIクライアントを使用してpahcer実行を開始
-      const response = await apiClient.execution.start(request);
+      const response = await apiClient.execution.start(workspaceId, request);
 
       // 成功メッセージの表示
       setSuccessMessage('pahcer実行が開始されました');
 
       // 実行ステータスを取得
-      const execution = await apiClient.execution.getStatus(response.id);
+      const execution = await apiClient.execution.getStatus(workspaceId, response.id);
       setCurrentExecution(execution);
 
       // フォームのリセット
@@ -150,7 +154,7 @@ const TestExecutionForm: React.FC = () => {
     if (!currentExecution) return;
 
     try {
-      await apiClient.execution.stop(currentExecution.id);
+      await apiClient.execution.stop(workspaceId, currentExecution.id);
       setSuccessMessage('pahcer実行を停止しました');
     } catch (error) {
       setErrorMessage('pahcer実行の停止に失敗しました');

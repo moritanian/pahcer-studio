@@ -52,14 +52,6 @@ export const TestExecutionRequestSchema = z.object({
 });
 
 /**
- * Workspace configuration
- */
-export const WorkspaceSchema = z.object({
-  targetDirectory: z.string(),
-  useWsl: z.boolean().default(false),
-});
-
-/**
  * `openapi.yaml`: components.schemas.LogMessage
  */
 export const LogMessageSchema = z.object({
@@ -72,7 +64,6 @@ export type TestExecutionStatus = z.infer<typeof TestExecutionStatusSchema>;
 export type TestCase = z.infer<typeof TestCaseSchema>;
 export type TestExecution = z.infer<typeof TestExecutionSchema>;
 export type TestExecutionRequest = z.infer<typeof TestExecutionRequestSchema>;
-export type Workspace = z.infer<typeof WorkspaceSchema>;
 export type LogMessage = z.infer<typeof LogMessageSchema>;
 
 // 汎用レスポンス: 成否のみ
