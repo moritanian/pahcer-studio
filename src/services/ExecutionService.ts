@@ -21,6 +21,7 @@ import { ScoreAnalysisService } from './ScoreAnalysisService';
 export class ExecutionService extends EventEmitter {
   private readonly configService: ConfigService;
   private readonly scoreAnalysisService: ScoreAnalysisService;
+  private readonly runningExecutions = new Set<string>();
 
   constructor(
     private readonly executionRepository: IExecutionRepository,
@@ -38,7 +39,13 @@ export class ExecutionService extends EventEmitter {
    * テスト実行を開始する
    */
   async startExecution(request: TestExecutionRequest, workspace: Workspace): Promise<string> {
+    // 同時実行チェック
+    if (this.runningExecutions.has(workspace.id)) {
+      throw new Error('このワークスペースでは既に実行が進行中です');
+    }
+
     const executionId = await this.generateNextExecutionId(workspace);
+    this.runningExecutions.add(workspace.id);
 
     // Python側と同じように、pahcer_config.tomlを更新
     this.emitLog(executionId, 'info', 'Updating pahcer_config.toml for test execution...');
@@ -84,6 +91,7 @@ export class ExecutionService extends EventEmitter {
     this.executePacher(executionId, request, workspace).catch((error) => {
       console.error(`Execution ${executionId} failed fatally:`, error);
       this.updateExecutionStatus(executionId, 'FAILED', workspace);
+      this.runningExecutions.delete(workspace.id);
     });
 
     return executionId;
@@ -103,6 +111,7 @@ export class ExecutionService extends EventEmitter {
       }
 
       await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
+      this.runningExecutions.delete(workspace.id);
     }
   }
 
@@ -147,6 +156,8 @@ export class ExecutionService extends EventEmitter {
   async deleteExecution(executionId: string, workspace: Workspace): Promise<void> {
     // 稼働中かもしれないプロセスを停止しようと試みる
     this.processManager.killProcess(executionId);
+    // 実行中フラグをクリア
+    this.runningExecutions.delete(workspace.id);
     // その後、関連ディレクトリを削除
     await this.executionRepository.delete(executionId, workspace);
     this.emitLog(executionId, 'info', `Execution data deleted.`);
@@ -214,59 +225,64 @@ export class ExecutionService extends EventEmitter {
     status: TestExecutionStatus,
     workspace: Workspace,
   ): Promise<void> {
-    // リポジトリから最新の情報を読み込む（summary.jsonとのマージ結果）
-    const finalExecution = await this.executionRepository.findById(executionId, workspace);
+    try {
+      // リポジトリから最新の情報を読み込む（summary.jsonとのマージ結果）
+      const finalExecution = await this.executionRepository.findById(executionId, workspace);
 
-    if (finalExecution) {
-      // ステータスを更新して保存
-      finalExecution.status = status;
-      await this.executionRepository.save(finalExecution, workspace);
+      if (finalExecution) {
+        // ステータスを更新して保存
+        finalExecution.status = status;
+        await this.executionRepository.save(finalExecution, workspace);
 
-      // テスト実行が完了した場合のみ、すべての実行の相対スコアを再計算
-      if (status === 'COMPLETED') {
-        try {
-          await this.scoreAnalysisService.recalculateAllRelativeScores(
-            this.executionRepository,
-            workspace,
-          );
-        } catch (error) {
-          this.emitLog(
-            executionId,
-            'error',
-            `Relative score recalculation failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
+        // テスト実行が完了した場合のみ、すべての実行の相対スコアを再計算
+        if (status === 'COMPLETED') {
+          try {
+            await this.scoreAnalysisService.recalculateAllRelativeScores(
+              this.executionRepository,
+              workspace,
+            );
+          } catch (error) {
+            this.emitLog(
+              executionId,
+              'error',
+              `Relative score recalculation failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
 
-        // 相対スコア再計算後に最新のデータを再読み込み
-        const updatedExecution = await this.executionRepository.findById(executionId, workspace);
-        if (updatedExecution) {
-          updatedExecution.status = status;
+          // 相対スコア再計算後に最新のデータを再読み込み
+          const updatedExecution = await this.executionRepository.findById(executionId, workspace);
+          if (updatedExecution) {
+            updatedExecution.status = status;
 
-          // UIに最終結果を通知（相対スコア再計算後の最新データで）
+            // UIに最終結果を通知（相対スコア再計算後の最新データで）
+            this.emit('execution:status', {
+              executionId,
+              status,
+              execution: updatedExecution,
+            });
+            this.emit('execution:progress', { executionId, ...updatedExecution });
+          }
+        } else {
+          // 失敗の場合は相対スコア再計算なしで即座に通知
           this.emit('execution:status', {
             executionId,
             status,
-            execution: updatedExecution,
+            execution: finalExecution,
           });
-          this.emit('execution:progress', { executionId, ...updatedExecution });
+          this.emit('execution:progress', { executionId, ...finalExecution });
+
+          const resultText = 'Execution failed.';
+          this.emitLog(executionId, 'info', `Final result: ${resultText}`);
         }
       } else {
-        // 失敗の場合は相対スコア再計算なしで即座に通知
-        this.emit('execution:status', {
-          executionId,
-          status,
-          execution: finalExecution,
-        });
-        this.emit('execution:progress', { executionId, ...finalExecution });
-
-        const resultText = 'Execution failed.';
-        this.emitLog(executionId, 'info', `Final result: ${resultText}`);
+        // フォールバック
+        await this.updateExecutionStatus(executionId, status, workspace);
       }
-    } else {
-      // フォールバック
-      await this.updateExecutionStatus(executionId, status, workspace);
+    } finally {
+      // 必ず実行中フラグをクリア
+      this.runningExecutions.delete(workspace.id);
     }
   }
 
