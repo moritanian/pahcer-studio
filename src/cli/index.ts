@@ -6,6 +6,8 @@ import * as fs from 'fs';
 import { EventSource } from 'eventsource';
 import packageJson from '../../package.json';
 import { PathHelper } from '../infrastructure/PathHelper';
+import type { Workspace } from '../schemas/workspace';
+import type { TestExecution } from '../schemas/execution';
 
 // Check if running in WSL
 function isWSL(): boolean {
@@ -455,6 +457,155 @@ program
       await terminateServer();
     } catch (error) {
       console.error('Error terminating server:', error);
+      process.exit(1);
+    }
+  });
+
+// Results commands
+const resultsCommand = program.command('results').description('Manage execution results');
+
+// Helper function to get workspace from directory
+async function getWorkspace(directory?: string): Promise<Workspace> {
+  let targetDir = directory ? directory : process.cwd();
+  targetDir = PathHelper.expandTilde(targetDir);
+  if (!path.isAbsolute(targetDir)) {
+    targetDir = path.resolve(process.cwd(), targetDir);
+  }
+
+  // Create or get workspace using POST (idempotent)
+  const workspaceResponse = await fetch(`${SERVER_URL}/api/workspaces`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      targetDirectory: targetDir,
+      useWsl: false,
+    }),
+  });
+
+  if (!workspaceResponse.ok) {
+    throw new Error('Failed to get workspace');
+  }
+
+  return workspaceResponse.json();
+}
+
+// Helper function to get workspace ID from directory
+async function getWorkspaceId(directory?: string): Promise<string> {
+  const workspace = await getWorkspace(directory);
+  return workspace.id;
+}
+
+// Results list command
+resultsCommand
+  .command('list')
+  .description('List execution history')
+  .option('-d, --directory <path>', 'Target directory (defaults to current directory)')
+  .option('--limit <number>', 'Limit number of results', '10')
+  .option('--json', 'Output in JSON format', false)
+  .action(async (options) => {
+    const isRunning = await isServerRunning();
+    if (!isRunning) {
+      console.error('Error: Server is not running. Start it with "phst launch"');
+      process.exit(1);
+    }
+
+    try {
+      const workspaceId = await getWorkspaceId(options.directory);
+      const response = await fetch(`${SERVER_URL}/api/workspaces/${workspaceId}/executions`);
+      if (!response.ok) {
+        console.error('Failed to fetch execution history');
+        process.exit(1);
+      }
+
+      const data = await response.json();
+      const limited = data.slice(0, parseInt(options.limit, 10));
+
+      if (options.json) {
+        console.log(JSON.stringify(limited, null, 2));
+      } else {
+        // Human-readable format
+        if (limited.length === 0) {
+          console.log('No execution history found');
+          return;
+        }
+        console.log('Execution History:');
+        console.log('');
+        limited.forEach((exec: TestExecution) => {
+          const avgScore = exec.averageScore?.toFixed(2) || 'N/A';
+          const comment = exec.comment || '(no comment)';
+          console.log(`${exec.id}`);
+          console.log(`  Time: ${exec.startTime || 'N/A'}`);
+          console.log(`  Avg Score: ${avgScore}`);
+          console.log(`  Comment: ${comment}`);
+          console.log('');
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching results:', error);
+      process.exit(1);
+    }
+  });
+
+// Results get command
+resultsCommand
+  .command('get <execution-id>')
+  .description('Get detailed results for a specific execution')
+  .option('-d, --directory <path>', 'Target directory (defaults to current directory)')
+  .action(async (executionId, options) => {
+    const isRunning = await isServerRunning();
+    if (!isRunning) {
+      console.error('Error: Server is not running. Start it with "phst launch"');
+      process.exit(1);
+    }
+
+    try {
+      const workspaceId = await getWorkspaceId(options.directory);
+      const response = await fetch(
+        `${SERVER_URL}/api/workspaces/${workspaceId}/executions/${executionId}`,
+      );
+      if (!response.ok) {
+        console.error(`Failed to fetch execution result: ${executionId}`);
+        process.exit(1);
+      }
+
+      const data = await response.json();
+      console.log(JSON.stringify(data, null, 2));
+    } catch (error) {
+      console.error('Error fetching result:', error);
+      process.exit(1);
+    }
+  });
+
+// Results latest command
+resultsCommand
+  .command('latest')
+  .description('Get the latest execution result')
+  .option('-d, --directory <path>', 'Target directory (defaults to current directory)')
+  .action(async (options) => {
+    const isRunning = await isServerRunning();
+    if (!isRunning) {
+      console.error('Error: Server is not running. Start it with "phst launch"');
+      process.exit(1);
+    }
+
+    try {
+      const workspaceId = await getWorkspaceId(options.directory);
+      const response = await fetch(`${SERVER_URL}/api/workspaces/${workspaceId}/executions`);
+      if (!response.ok) {
+        console.error('Failed to fetch execution history');
+        process.exit(1);
+      }
+
+      const data = await response.json();
+      if (data.length === 0) {
+        console.error('No execution results found');
+        process.exit(1);
+      }
+
+      const latest = data[0];
+      console.log(JSON.stringify(latest, null, 2));
+    } catch (error) {
+      console.error('Error fetching latest result:', error);
       process.exit(1);
     }
   });
