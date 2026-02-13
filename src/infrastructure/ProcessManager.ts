@@ -199,6 +199,7 @@ export class ProcessManager {
     if (request.comment) cmd.push('-c', request.comment);
     if (request.shuffle) cmd.push('--shuffle');
     if (request.freezeBestScores) cmd.push('--freeze-best-scores');
+    if (request.settingFile) cmd.push('--setting-file', request.settingFile);
 
     // WSL モードの場合、linuxExecutionCwd を使用
     if (workspace.useWsl) {

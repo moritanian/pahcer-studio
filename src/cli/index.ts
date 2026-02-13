@@ -246,6 +246,7 @@ async function runTests(options: {
   shuffle?: boolean;
   freeze?: boolean;
   directory?: string;
+  settingFile?: string;
 }): Promise<void> {
   const isRunning = await isServerRunning();
 
@@ -265,12 +266,22 @@ async function runTests(options: {
     targetDir = path.resolve(process.cwd(), targetDir);
   }
 
-  // Check if pahcer_config.toml exists in target directory
-  const configPath = path.join(targetDir, 'pahcer_config.toml');
-  if (!fs.existsSync(configPath)) {
-    console.error(`Error: pahcer_config.toml not found in directory: ${targetDir}`);
-    console.error('Please specify a valid AHC project directory (where pahcer is initialized)');
-    process.exit(1);
+  // Check if setting file exists
+  if (options.settingFile) {
+    const settingFilePath = path.isAbsolute(options.settingFile)
+      ? options.settingFile
+      : path.resolve(targetDir, options.settingFile);
+    if (!fs.existsSync(settingFilePath)) {
+      console.error(`Error: Setting file not found: ${settingFilePath}`);
+      process.exit(1);
+    }
+  } else {
+    const configPath = path.join(targetDir, 'pahcer_config.toml');
+    if (!fs.existsSync(configPath)) {
+      console.error(`Error: pahcer_config.toml not found in directory: ${targetDir}`);
+      console.error('Please specify a valid AHC project directory (where pahcer is initialized)');
+      process.exit(1);
+    }
   }
 
   // Create or get workspace
@@ -290,6 +301,7 @@ async function runTests(options: {
     freezeBestScores: options.freeze || false,
     testCaseCount: options.count || 100,
     startSeed: options.seed || 0,
+    settingFile: options.settingFile || null,
   };
 
   try {
@@ -432,6 +444,7 @@ program
   .option('-c, --comment <string>', 'Comment for this execution')
   .option('--shuffle', 'Shuffle test case order', false)
   .option('--freeze', 'Freeze best scores', false)
+  .option('-f, --setting-file <path>', 'Path to the setting file')
   .action(async (directory, options) => {
     try {
       await runTests({
@@ -441,6 +454,7 @@ program
         shuffle: options.shuffle,
         freeze: options.freeze,
         directory: directory,
+        settingFile: options.settingFile,
       });
     } catch (error) {
       console.error('Error running tests:', error);

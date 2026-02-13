@@ -49,6 +49,7 @@ export const TestExecutionRequestSchema = z.object({
   freezeBestScores: z.boolean().default(false),
   testCaseCount: z.number().int().min(1).default(100),
   startSeed: z.number().int().min(0).default(0),
+  settingFile: z.string().nullable().default(null),
 });
 
 /**
