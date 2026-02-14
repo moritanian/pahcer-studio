@@ -81,16 +81,26 @@ async function isServerRunning(): Promise<boolean> {
 }
 
 // Start the server
-async function startServer(shouldOpenBrowser: boolean = true): Promise<void> {
+async function startServer(
+  shouldOpenBrowser: boolean = true,
+  force: boolean = false,
+): Promise<void> {
   const isRunning = await isServerRunning();
 
   if (isRunning) {
-    console.log('Server is already running');
-    if (shouldOpenBrowser) {
-      console.log(`Opening browser at ${SERVER_URL}`);
-      await openBrowser(SERVER_URL);
+    if (force) {
+      console.log('Server is already running. Force terminating...');
+      await terminateServer();
+      // Wait a bit for the server to fully terminate
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } else {
+      console.log('Server is already running');
+      if (shouldOpenBrowser) {
+        console.log(`Opening browser at ${SERVER_URL}`);
+        await openBrowser(SERVER_URL);
+      }
+      return;
     }
-    return;
   }
 
   console.log('Starting server...');
@@ -227,9 +237,10 @@ program
   .command('launch')
   .description('Launch the pahcer-studio server in background and open browser')
   .option('--no-browser', 'Do not open browser automatically')
+  .option('-f, --force', 'Force restart server if already running', false)
   .action(async (options) => {
     try {
-      await startServer(options.browser !== false);
+      await startServer(options.browser !== false, options.force);
       // Server is running in background, exit the CLI
       process.exit(0);
     } catch (error) {
