@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useDeferredValue } from 'react';
 import { Box, Paper, Typography } from '@mui/material';
 import GraphSettings from './graph/GraphSettings';
 import ScoreGraph from './graph/ScoreGraph';
@@ -17,23 +17,15 @@ const AnalysisChart: React.FC<AnalysisChartProps> = ({
   executions,
   selectedExecutionIds,
 }) => {
-  // チャート固有の状態
+  // UI入力用の状態（即座に更新）
   const [xAxis, setXAxis] = useState('seed');
   const [inputFilter, setInputFilter] = useState('');
   const [useLogScale, setUseLogScale] = useState(false);
   const [useRelativeScore, setUseRelativeScore] = useState(false);
 
-  // 現在の値と適用される値を分離
-  const [currentInputFilter, setCurrentInputFilter] = useState('');
-  const [currentXAxis, setCurrentXAxis] = useState('seed');
-  const [applyingSettings, setApplyingSettings] = useState(false);
-
-  const applyGraphSettings = () => {
-    setApplyingSettings(true);
-    setInputFilter(currentInputFilter);
-    setXAxis(currentXAxis);
-    setApplyingSettings(false);
-  };
+  // グラフ描画用の遅延値（入力中の再レンダリングを防止）
+  const deferredXAxis = useDeferredValue(xAxis);
+  const deferredInputFilter = useDeferredValue(inputFilter);
 
   return (
     <Paper
@@ -56,16 +48,14 @@ const AnalysisChart: React.FC<AnalysisChartProps> = ({
       >
         <Typography variant="h6">分析結果</Typography>
         <GraphSettings
-          currentXAxis={currentXAxis}
-          currentInputFilter={currentInputFilter}
-          onXAxisChange={setCurrentXAxis}
-          onInputFilterChange={setCurrentInputFilter}
+          xAxis={xAxis}
+          inputFilter={inputFilter}
+          onXAxisChange={setXAxis}
+          onInputFilterChange={setInputFilter}
           useLogScale={useLogScale}
           onToggleLogScale={setUseLogScale}
           useRelativeScore={useRelativeScore}
           onToggleRelativeScore={setUseRelativeScore}
-          onApply={applyGraphSettings}
-          applying={applyingSettings}
         />
       </Box>
 
@@ -83,10 +73,10 @@ const AnalysisChart: React.FC<AnalysisChartProps> = ({
           analysisResult={analysisResult}
           executions={executions}
           selectedExecutionIds={selectedExecutionIds}
-          inputFilter={inputFilter}
+          inputFilter={deferredInputFilter}
           useRelativeScore={useRelativeScore}
           useLogScale={useLogScale}
-          xAxis={xAxis}
+          xAxis={deferredXAxis}
         />
       </Box>
     </Paper>
