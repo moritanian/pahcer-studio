@@ -120,21 +120,31 @@ export function useChartDataset(
           count: group.length,
         };
 
-        // グループ内平均スコアを計算
+        // グループ内平均スコアと標準偏差を計算
         selectedExecutionIds.forEach((execId) => {
           const execution = executions.find((e) => e.id === execId);
           const dataKey = getExecDataKey(execution, execId);
 
-          let sum = 0;
-          let cnt = 0;
+          const values: number[] = [];
           group.forEach((d: ScoreGraphPoint) => {
             const v = d[dataKey] as number | undefined;
             if (typeof v === 'number') {
-              sum += v;
-              cnt += 1;
+              values.push(v);
             }
           });
-          entry[dataKey] = cnt > 0 ? sum / cnt : null;
+
+          if (values.length > 0) {
+            const mean = values.reduce((a, b) => a + b, 0) / values.length;
+            const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+            const std = Math.sqrt(variance);
+            entry[dataKey] = mean;
+            entry[`${dataKey}_std`] = std;
+            entry[`${dataKey}_range`] = [mean - std, mean + std];
+          } else {
+            entry[dataKey] = null;
+            entry[`${dataKey}_std`] = null;
+            entry[`${dataKey}_range`] = null;
+          }
         });
 
         agg.push(entry);

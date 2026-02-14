@@ -2,8 +2,9 @@ import type React from 'react';
 import { Box, Typography, IconButton, Tooltip } from '@mui/material';
 import InfoIcon from '@mui/icons-material/Info';
 import {
-  LineChart,
+  ComposedChart,
   Line,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -147,7 +148,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
       {/* Rechartsグラフ */}
       <Box sx={{ height: 400, width: '100%' }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={processedData} margin={{ left: 50, right: 20, top: 5, bottom: 5 }}>
+          <ComposedChart data={processedData} margin={{ left: 50, right: 20, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis
               dataKey="x"
@@ -183,15 +184,33 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
                       <>
                         <p>{`${xAxis || 'seed'}: ${d.x}`}</p>
                         <p>{`ケース数: ${d.count}`}</p>
-                        <p style={{ whiteSpace: 'normal' }}>{`Seeds: ${d.seeds.join(', ')}`}</p>
+                        {selectedExecutionIds.map((id) => {
+                          const execution = executions.find((e) => e.id === id);
+                          const dataKey = getExecDataKey(execution, id);
+                          const mean = d[dataKey] as number | null | undefined;
+                          const std = d[`${dataKey}_std`] as number | null | undefined;
+                          if (mean === undefined || mean === null) return null;
+                          const name = execution?.comment || id;
+                          return (
+                            <p key={id}>
+                              {`${name}: ${mean.toFixed(2)}`}
+                              {typeof std === 'number' ? ` (σ: ${std.toFixed(2)})` : ''}
+                            </p>
+                          );
+                        })}
+                        <p style={{ whiteSpace: 'normal', fontSize: '0.85em', color: '#666' }}>
+                          {`Seeds: ${d.seeds.join(', ')}`}
+                        </p>
                       </>
                     ) : (
                       <>
                         <p>{`Seed: ${d.seeds?.[0]}`}</p>
                         {selectedExecutionIds.map((id) => {
-                          const name = executions.find((e) => e.id === id)?.comment || id;
-                          const v = d[name];
+                          const execution = executions.find((e) => e.id === id);
+                          const dataKey = getExecDataKey(execution, id);
+                          const v = d[dataKey];
                           if (v === undefined || v === null) return null;
+                          const name = execution?.comment || id;
                           return (
                             <p key={id}>{`${name}: ${typeof v === 'number' ? v.toFixed(2) : v}`}</p>
                           );
@@ -203,6 +222,26 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
               }}
             />
             <Legend />
+            {selectedExecutionIds.map((execId, index) => {
+              const execution = executions.find((e) => e.id === execId);
+              const dataKey = getExecDataKey(execution, execId);
+              const color = colors[index % colors.length];
+
+              return (
+                <Area
+                  key={`${execId}_area`}
+                  type="monotone"
+                  dataKey={`${dataKey}_range`}
+                  fill={color}
+                  stroke="none"
+                  fillOpacity={0.15}
+                  connectNulls={false}
+                  legendType="none"
+                  activeDot={false}
+                  isAnimationActive={false}
+                />
+              );
+            })}
             {selectedExecutionIds.map((execId, index) => {
               const execution = executions.find((e) => e.id === execId);
               const execName = execution?.comment || execId;
@@ -221,7 +260,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 />
               );
             })}
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </Box>
     </>
