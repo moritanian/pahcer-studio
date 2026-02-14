@@ -1,4 +1,9 @@
-import { TestExecution, TestExecutionRequest, TestCase } from '../../schemas/execution';
+import {
+  TestExecution,
+  TestExecutionRequest,
+  TestCase,
+  TestExecutionUpdateRequest,
+} from '../../schemas/execution';
 import { Workspace, AppSettings } from '../../schemas/workspace';
 import {
   AnalysisRequest,
@@ -63,6 +68,19 @@ export const apiClient = {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error(await res.text());
+    },
+    update: async (
+      workspaceId: string,
+      executionId: string,
+      request: TestExecutionUpdateRequest,
+    ): Promise<TestExecution> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/executions/${executionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
     },
   },
   workspace: {

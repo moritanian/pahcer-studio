@@ -29,6 +29,7 @@ import TimelapseIcon from '@mui/icons-material/Timelapse';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import { apiClient } from '../../api/client';
+import TextField from '@mui/material/TextField';
 
 interface TestHistoryTableProps {
   workspaceId: string;
@@ -56,6 +57,9 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [executionToDelete, setExecutionToDelete] = useState<TestExecution | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editingExecutionId, setEditingExecutionId] = useState<string | null>(null);
+  const [editingComment, setEditingComment] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   // テーブルヘッダーの定義
   const columnDefinitions = [
@@ -170,6 +174,35 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
   const handleDeleteCancel = () => {
     setDeleteDialogOpen(false);
     setExecutionToDelete(null);
+  };
+
+  const handleCommentDoubleClick = (execution: TestExecution) => {
+    setEditingExecutionId(execution.id);
+    setEditingComment(execution.comment || '');
+  };
+
+  const handleCommentSave = async (executionId: string) => {
+    if (updating) return;
+
+    setUpdating(true);
+    try {
+      await apiClient.execution.update(workspaceId, executionId, {
+        comment: editingComment || null,
+      });
+      setEditingExecutionId(null);
+      setEditingComment('');
+      await onRefresh();
+    } catch (err) {
+      console.error('Error updating execution:', err);
+      onError('テスト実行の更新に失敗しました');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCommentCancel = () => {
+    setEditingExecutionId(null);
+    setEditingComment('');
   };
 
   const getStatusColor = (status: TestExecutionStatus | undefined) => {
@@ -293,7 +326,36 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                 <TableCell sx={{ fontFamily: 'monospace', py: 0.5, px: 1 }}>
                   {execution.id || '-'}
                 </TableCell>
-                <TableCell sx={{ py: 0.5, px: 1 }}>{execution.comment || '-'}</TableCell>
+                <TableCell
+                  sx={{ py: 0.5, px: 1, cursor: 'text' }}
+                  onDoubleClick={() => handleCommentDoubleClick(execution)}
+                >
+                  {editingExecutionId === execution.id ? (
+                    <TextField
+                      size="small"
+                      value={editingComment}
+                      onChange={(e) => setEditingComment(e.target.value)}
+                      onBlur={() => handleCommentSave(execution.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleCommentSave(execution.id);
+                        } else if (e.key === 'Escape') {
+                          handleCommentCancel();
+                        }
+                      }}
+                      autoFocus
+                      disabled={updating}
+                      sx={{
+                        '& .MuiInputBase-root': {
+                          height: '28px',
+                          fontSize: '0.875rem',
+                        },
+                      }}
+                    />
+                  ) : (
+                    execution.comment || '-'
+                  )}
+                </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>{formatDate(execution.startTime)}</TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>
                   <Chip
