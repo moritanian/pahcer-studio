@@ -118,6 +118,7 @@ const TestExecutionForm: React.FC<TestExecutionFormProps> = ({ workspaceId }) =>
         freezeBestScores: freezeBestScores,
         testCaseCount: testCaseCount === '' ? 100 : parseInt(testCaseCount),
         startSeed: startSeed === '' ? 0 : parseInt(startSeed),
+        settingFile: null,
       };
 
       // APIクライアントを使用してpahcer実行を開始

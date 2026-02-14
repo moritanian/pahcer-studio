@@ -52,4 +52,9 @@ export interface IExecutionRepository {
    * ファイル読み込みは行わず、呼び出し側が必要に応じて利用します。
    */
   getSummaryPath(id: string, workspace: Workspace): string;
+
+  /**
+   * 実行情報を更新する
+   */
+  update(id: string, data: Partial<TestExecution>, workspace: Workspace): Promise<TestExecution>;
 }

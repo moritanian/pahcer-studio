@@ -624,6 +624,56 @@ resultsCommand
     }
   });
 
+// Results update command
+resultsCommand
+  .command('update <execution-id>')
+  .description('Update execution data (e.g., comment)')
+  .option('-d, --directory <path>', 'Target directory (defaults to current directory)')
+  .option('-c, --comment <string>', 'New comment for the execution')
+  .action(async (executionId, options) => {
+    const isRunning = await isServerRunning();
+    if (!isRunning) {
+      console.error('Error: Server is not running. Start it with "phst launch"');
+      process.exit(1);
+    }
+
+    if (options.comment === undefined) {
+      console.error('Error: At least one field to update must be provided (--comment)');
+      process.exit(1);
+    }
+
+    try {
+      const workspaceId = await getWorkspaceId(options.directory);
+      const updateData: { comment?: string | null } = {};
+
+      if (options.comment !== undefined) {
+        updateData.comment = options.comment || null;
+      }
+
+      const response = await fetch(
+        `${SERVER_URL}/api/workspaces/${workspaceId}/executions/${executionId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateData),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error(`Failed to update execution: ${errorData.error || 'Unknown error'}`);
+        process.exit(1);
+      }
+
+      const updated = await response.json();
+      console.log('Execution updated successfully:');
+      console.log(JSON.stringify(updated, null, 2));
+    } catch (error) {
+      console.error('Error updating execution:', error);
+      process.exit(1);
+    }
+  });
+
 program
   .name('pahcer-studio')
   .description('CLI tool for pahcer-studio')

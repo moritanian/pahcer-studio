@@ -5,7 +5,11 @@ import * as fsPromises from 'fs/promises';
 import { createServer as createViteServer } from 'vite';
 import { DIContainer } from '../infrastructure/DIContainer';
 import { PathHelper } from '../infrastructure/PathHelper';
-import { TestExecutionRequest, TestExecutionRequestSchema } from '../schemas/execution';
+import {
+  TestExecutionRequest,
+  TestExecutionRequestSchema,
+  TestExecutionUpdateRequestSchema,
+} from '../schemas/execution';
 import { Workspace, WorkspaceSchema, AppSettingsSchema, AppSettings } from '../schemas/workspace';
 import {
   AnalysisRequestSchema,
@@ -131,6 +135,26 @@ function setupRoutes(
         res.json(status);
       } catch (error) {
         res.status(500).json({ error: String(error) });
+      }
+    },
+  );
+
+  app.put(
+    '/api/workspaces/:workspaceId/executions/:executionId',
+    validateWorkspace,
+    async (req, res) => {
+      try {
+        const workspace = req.workspace!;
+        const { executionId } = req.params;
+        const updateData = validateRequest(TestExecutionUpdateRequestSchema, req.body);
+
+        const executionRepository = container.getExecutionRepository();
+        const updated = await executionRepository.update(executionId, updateData, workspace);
+
+        res.json(updated);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: errorMessage });
       }
     },
   );

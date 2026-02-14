@@ -60,11 +60,19 @@ export const LogMessageSchema = z.object({
   message: z.string(),
 });
 
+/**
+ * Execution update request schema
+ */
+export const TestExecutionUpdateRequestSchema = z.object({
+  comment: z.string().nullable().optional(),
+});
+
 // Zodスキーマからの型推論
 export type TestExecutionStatus = z.infer<typeof TestExecutionStatusSchema>;
 export type TestCase = z.infer<typeof TestCaseSchema>;
 export type TestExecution = z.infer<typeof TestExecutionSchema>;
 export type TestExecutionRequest = z.infer<typeof TestExecutionRequestSchema>;
+export type TestExecutionUpdateRequest = z.infer<typeof TestExecutionUpdateRequestSchema>;
 export type LogMessage = z.infer<typeof LogMessageSchema>;
 
 // 汎用レスポンス: 成否のみ

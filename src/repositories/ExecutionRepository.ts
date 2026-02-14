@@ -268,6 +268,36 @@ export class ExecutionRepository implements IExecutionRepository {
   }
 
   /**
+   * 実行情報を更新する
+   */
+  async update(
+    id: string,
+    data: Partial<TestExecution>,
+    workspace: Workspace,
+  ): Promise<TestExecution> {
+    let execution = await this.findById(id, workspace);
+    if (!execution) {
+      throw new Error(`Execution ${id} not found`);
+    }
+
+    // Only allow updating specific fields
+    const allowedFields = ['comment'] as const;
+    type AllowedField = (typeof allowedFields)[number];
+    const updateData: Partial<Pick<TestExecution, AllowedField>> = {};
+
+    for (const key of allowedFields) {
+      if (key in data) {
+        updateData[key] = data[key] as TestExecution[AllowedField];
+      }
+    }
+
+    execution = { ...execution, ...updateData };
+    await this.save(execution, workspace);
+
+    return execution;
+  }
+
+  /**
    * summary.json のデータで TestExecution オブジェクトを更新するヘルパー
    */
   private async mergeWithSummary(
