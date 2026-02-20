@@ -374,8 +374,15 @@ export class AnalysisService {
   async analyze(workspace: Workspace, request: AnalysisRequest): Promise<AnalysisResponse> {
     this.ensureCacheLoaded(workspace);
     try {
-      // 特徴量キャッシュを更新（キャッシュがない場合のみ）
-      if (this.inputFeaturesCache.size === 0) {
+      // 特徴量キャッシュを更新
+      //   - キャッシュが空の場合
+      //   - tools/in の実ファイル数とキャッシュの件数に差分がある場合（テスト数変更対応）
+      const inputDir = this.getInputDir(workspace);
+      const currentInputFiles = glob.sync('*.txt', { cwd: inputDir });
+      if (
+        this.inputFeaturesCache.size === 0 ||
+        currentInputFiles.length !== this.inputFeaturesCache.size
+      ) {
         await this.updateFeatureCache(workspace, request.featureFormat);
       }
 
