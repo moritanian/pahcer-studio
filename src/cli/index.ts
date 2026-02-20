@@ -249,10 +249,54 @@ program
     }
   });
 
+// Parse seed option into startSeed and testCaseCount
+function parseSeedOption(
+  seedArg: string | undefined,
+  countArg: string | undefined,
+): { startSeed: number; testCaseCount: number } {
+  if (seedArg !== undefined && /[:-]/.test(seedArg) && /^\d/.test(seedArg)) {
+    // Range format: "10:20" or "10-20" (hyphen at end of class = literal hyphen)
+    const parts = seedArg.split(/[:-]/);
+    const start = parseInt(parts[0], 10);
+    const end = parseInt(parts[1], 10);
+    if (isNaN(start) || isNaN(end) || start > end) {
+      console.error(
+        'Error: Invalid seed range. Use format start:end or start-end (e.g., 10:20 or 10-20)',
+      );
+      process.exit(1);
+    }
+    if (countArg !== undefined) {
+      console.warn('Warning: --count is ignored when a seed range is specified');
+    }
+    return { startSeed: start, testCaseCount: end - start + 1 };
+  } else if (seedArg !== undefined && countArg === undefined) {
+    // Single seed, no count → run only that one seed
+    const seed = parseInt(seedArg, 10);
+    if (isNaN(seed) || seed < 0) {
+      console.error('Error: Invalid seed value. Must be a non-negative integer.');
+      process.exit(1);
+    }
+    return { startSeed: seed, testCaseCount: 1 };
+  } else {
+    // Default behaviour: seed as start seed, count as test case count
+    const startSeed = seedArg !== undefined ? parseInt(seedArg, 10) : 0;
+    const testCaseCount = countArg !== undefined ? parseInt(countArg, 10) : 100;
+    if (isNaN(startSeed) || startSeed < 0) {
+      console.error('Error: Invalid seed value. Must be a non-negative integer.');
+      process.exit(1);
+    }
+    if (isNaN(testCaseCount) || testCaseCount < 1) {
+      console.error('Error: Invalid count value. Must be a positive integer.');
+      process.exit(1);
+    }
+    return { startSeed, testCaseCount };
+  }
+}
+
 // Run pahcer tests
 async function runTests(options: {
-  count?: number;
-  seed?: number;
+  testCaseCount: number;
+  startSeed: number;
   comment?: string;
   shuffle?: boolean;
   freeze?: boolean;
@@ -310,8 +354,8 @@ async function runTests(options: {
     comment: options.comment || null,
     shuffle: options.shuffle || false,
     freezeBestScores: options.freeze || false,
-    testCaseCount: options.count || 100,
-    startSeed: options.seed || 0,
+    testCaseCount: options.testCaseCount,
+    startSeed: options.startSeed,
     settingFile: options.settingFile || null,
   };
 
@@ -450,17 +494,28 @@ async function runTests(options: {
 program
   .command('run [directory]')
   .description('Run pahcer tests (starts server if not running)')
-  .option('-n, --count <number>', 'Number of test cases to run', '100')
-  .option('-s, --seed <number>', 'Starting seed value', '0')
+  .option(
+    '-n, --count <number>',
+    'Number of test cases to run (default: 100; ignored when --seed is a range)',
+  )
+  .option(
+    '-s, --seed <value>',
+    'Seed value, starting seed, or seed range.\n' +
+      '  Single seed:  --seed 42       → runs only seed 42\n' +
+      '  Seed range:   --seed 10:20    → runs seeds 10–20 (inclusive)\n' +
+      '                --seed 10-20    → same as above\n' +
+      '  With --count: --seed 10 -n 50 → runs seeds 10–59',
+  )
   .option('-c, --comment <string>', 'Comment for this execution')
   .option('--shuffle', 'Shuffle test case order', false)
   .option('--freeze', 'Freeze best scores', false)
   .option('-f, --setting-file <path>', 'Path to the setting file')
   .action(async (directory, options) => {
     try {
+      const { startSeed, testCaseCount } = parseSeedOption(options.seed, options.count);
       await runTests({
-        count: parseInt(options.count, 10),
-        seed: parseInt(options.seed, 10),
+        testCaseCount,
+        startSeed,
         comment: options.comment,
         shuffle: options.shuffle,
         freeze: options.freeze,
