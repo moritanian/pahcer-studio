@@ -22,6 +22,7 @@ interface ScoreGraphProps {
   executions: TestExecution[];
   selectedExecutionIds: string[];
   inputFilter: string;
+  sortByScore: boolean;
   useRelativeScore: boolean;
   useLogScale: boolean;
   xAxis: string;
@@ -32,6 +33,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
   executions,
   selectedExecutionIds,
   inputFilter,
+  sortByScore,
   useRelativeScore,
   useLogScale,
   xAxis,
@@ -53,6 +55,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
     xValues,
     xAxis,
     useRelativeScore,
+    sortByScore,
   );
 
   // 事前チェック（Hook 呼び出し後に行う）
@@ -151,12 +154,12 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
           <ComposedChart data={processedData} margin={{ left: 50, right: 20, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis
-              dataKey="x"
-              type="number"
-              scale={'linear'}
-              domain={useLogScale ? ['dataMin', 'dataMax'] : ['auto', 'auto']}
+              dataKey={sortByScore ? 'xLabel' : 'x'}
+              type={sortByScore ? 'category' : 'number'}
+              scale={sortByScore ? 'auto' : 'linear'}
+              domain={!sortByScore && useLogScale ? ['dataMin', 'dataMax'] : undefined}
               name={xAxis || 'seed'}
-              allowDecimals={!processedData.every((d) => Number.isInteger(d.x))}
+              allowDecimals={!sortByScore && !processedData.every((d) => Number.isInteger(d.x))}
             />
             <YAxis
               scale={useLogScale ? 'log' : 'linear'}
@@ -182,7 +185,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
                   >
                     {grouped ? (
                       <>
-                        <p>{`${xAxis || 'seed'}: ${d.x}`}</p>
+                        <p>{`${xAxis || 'seed'}: ${d.xLabel ?? d.x}`}</p>
                         <p>{`ケース数: ${d.count}`}</p>
                         {selectedExecutionIds.map((id) => {
                           const execution = executions.find((e) => e.id === id);
@@ -204,7 +207,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
                       </>
                     ) : (
                       <>
-                        <p>{`Seed: ${d.seeds?.[0]}`}</p>
+                        <p>{`${xAxis || 'seed'}: ${d.xLabel !== undefined ? d.xLabel : d.x}`}</p>
                         {selectedExecutionIds.map((id) => {
                           const execution = executions.find((e) => e.id === id);
                           const dataKey = getExecDataKey(execution, id);

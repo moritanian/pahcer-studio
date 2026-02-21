@@ -23,6 +23,7 @@ import type { TestExecution } from '../../../../schemas/execution';
 // を動的に追加できるようにしている点に注意
 export interface ScoreGraphPoint {
   x: number;
+  xLabel?: number; // ソート時の元のX値（ツールチップ表示用）
   seeds: number[]; // 集約時は含まれるシード一覧
   count: number; // 集約グループのケース数
   // 任意追加プロパティ (特徴量や各実行のスコアなど)
@@ -46,6 +47,7 @@ export function useChartDataset(
   xValues: number[],
   xAxis: string,
   useRelativeScore: boolean,
+  sortByScore: boolean = false,
 ) {
   // ① 画面上部に表示する「利用可能な入力変数」文字列を生成
   const featureKeys = useMemo(() => {
@@ -160,6 +162,30 @@ export function useChartDataset(
         .sort((a: ScoreGraphPoint, b: ScoreGraphPoint) => a.x - b.x);
     }
 
+    // 2-3) Y軸の値によるソート
+    if (sortByScore) {
+      // 各点の選択実行の平均Y値で手前にソート
+      // useRelativeScore ・ useLogScaleに対応した値はすでに dataKey に反映済み
+      const getAvgScore = (d: ScoreGraphPoint): number => {
+        const values: number[] = selectedExecutionIds
+          .map((execId) => {
+            const execution = executions.find((e) => e.id === execId);
+            const dataKey = getExecDataKey(execution, execId);
+            const v = d[dataKey];
+            return typeof v === 'number' ? v : null;
+          })
+          .filter((v): v is number => v !== null);
+        return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+      };
+
+      processed = [...processed].sort(
+        (a: ScoreGraphPoint, b: ScoreGraphPoint) => getAvgScore(a) - getAvgScore(b),
+      );
+
+      // X座標をインデックスに置換（元のx値はxLabelに保存）
+      processed = processed.map((d, i) => ({ ...d, xLabel: d.x as number, x: i }));
+    }
+
     // ③ 生成結果を返却
     return { processedData: processed, useAggregation: aggEnabled };
   }, [
@@ -170,6 +196,7 @@ export function useChartDataset(
     xValues,
     xAxis,
     useRelativeScore,
+    sortByScore,
   ]);
 
   return { featureKeys, processedData, useAggregation };

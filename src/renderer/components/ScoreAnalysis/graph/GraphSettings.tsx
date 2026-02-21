@@ -4,8 +4,10 @@ import { Box, TextField, Checkbox, FormControlLabel } from '@mui/material';
 interface GraphSettingsProps {
   xAxis: string;
   inputFilter: string;
+  sortByScore: boolean;
   onXAxisChange: (value: string) => void;
   onInputFilterChange: (value: string) => void;
+  onToggleSortByScore: (value: boolean) => void;
   useLogScale: boolean;
   onToggleLogScale: (value: boolean) => void;
   useRelativeScore: boolean;
@@ -15,8 +17,10 @@ interface GraphSettingsProps {
 const GraphSettings: React.FC<GraphSettingsProps> = ({
   xAxis,
   inputFilter,
+  sortByScore,
   onXAxisChange,
   onInputFilterChange,
+  onToggleSortByScore,
   useLogScale,
   onToggleLogScale,
   useRelativeScore,
@@ -56,6 +60,13 @@ const GraphSettings: React.FC<GraphSettingsProps> = ({
           />
         }
         label="相対スコアを使用"
+      />
+
+      <FormControlLabel
+        control={
+          <Checkbox checked={sortByScore} onChange={(e) => onToggleSortByScore(e.target.checked)} />
+        }
+        label="Y軸の値でX軸をソート"
       />
     </Box>
   );

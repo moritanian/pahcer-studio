@@ -20,6 +20,7 @@ const AnalysisChart: React.FC<AnalysisChartProps> = ({
   // UI入力用の状態（即座に更新）
   const [xAxis, setXAxis] = useState('seed');
   const [inputFilter, setInputFilter] = useState('');
+  const [sortByScore, setSortByScore] = useState(false);
   const [useLogScale, setUseLogScale] = useState(false);
   const [useRelativeScore, setUseRelativeScore] = useState(false);
 
@@ -50,8 +51,10 @@ const AnalysisChart: React.FC<AnalysisChartProps> = ({
         <GraphSettings
           xAxis={xAxis}
           inputFilter={inputFilter}
+          sortByScore={sortByScore}
           onXAxisChange={setXAxis}
           onInputFilterChange={setInputFilter}
+          onToggleSortByScore={setSortByScore}
           useLogScale={useLogScale}
           onToggleLogScale={setUseLogScale}
           useRelativeScore={useRelativeScore}
@@ -74,6 +77,7 @@ const AnalysisChart: React.FC<AnalysisChartProps> = ({
           executions={executions}
           selectedExecutionIds={selectedExecutionIds}
           inputFilter={deferredInputFilter}
+          sortByScore={sortByScore}
           useRelativeScore={useRelativeScore}
           useLogScale={useLogScale}
           xAxis={deferredXAxis}
