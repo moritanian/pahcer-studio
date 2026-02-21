@@ -157,7 +157,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
               dataKey={sortByScore ? 'xLabel' : 'x'}
               type={sortByScore ? 'category' : 'number'}
               scale={sortByScore ? 'auto' : 'linear'}
-              domain={!sortByScore && useLogScale ? ['dataMin', 'dataMax'] : undefined}
+              domain={!sortByScore ? ['dataMin', 'dataMax'] : undefined}
               name={xAxis || 'seed'}
               allowDecimals={!sortByScore && !processedData.every((d) => Number.isInteger(d.x))}
             />
