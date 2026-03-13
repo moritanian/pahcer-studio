@@ -1,4 +1,5 @@
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import { parse, stringify } from 'smol-toml';
 import { PathHelper } from '../infrastructure/PathHelper';
 import type { Workspace } from '../schemas/workspace';
@@ -33,13 +34,6 @@ export class ConfigService {
    */
   private getConfigPath(workspace: Workspace): string {
     return PathHelper.getConfigPath(workspace.targetDirectory);
-  }
-
-  /**
-   * pahcer_config.toml.bak のパスを取得
-   */
-  private getBackupPath(workspace: Workspace): string {
-    return PathHelper.getBackupPath(workspace.targetDirectory);
   }
 
   /**
@@ -87,52 +81,35 @@ export class ConfigService {
   }
 
   /**
-   * pahcer_config.tomlをバックアップ
+   * テスト実行用の一時設定ファイルを削除する
    */
-  async backupConfig(workspace: Workspace): Promise<boolean> {
+  async cleanupTempConfig(tempConfigPath: string): Promise<boolean> {
     try {
-      const configPath = this.getConfigPath(workspace);
-      const backupPath = this.getBackupPath(workspace);
-      await fs.copyFile(configPath, backupPath);
+      await fs.unlink(tempConfigPath);
       return true;
     } catch (error) {
-      console.error(`Error backing up config: ${error}`);
+      console.error(`Error cleaning up temp config: ${error}`);
       return false;
     }
   }
 
   /**
-   * バックアップからpahcer_config.tomlを復元
+   * テスト実行用の一時設定ファイルを作成する。
+   * 元の設定ファイルには一切触れず、seed範囲を変更した一時ファイルを生成する。
+   * @returns 一時ファイルのパス。失敗時はnull。
    */
-  async restoreConfig(workspace: Workspace): Promise<boolean> {
-    try {
-      const backupPath = this.getBackupPath(workspace);
-      const configPath = this.getConfigPath(workspace);
-
-      await fs.access(backupPath);
-      await fs.copyFile(backupPath, configPath);
-      return true;
-    } catch (error) {
-      console.error(`Error restoring config: ${error}`);
-      return false;
-    }
-  }
-
-  /**
-   * テスト実行用にpahcer_config.tomlを更新
-   * Python側のupdate_config_for_testと同じ機能
-   */
-  async updateConfigForTest(
+  async createTempConfigForTest(
     testCaseCount: number,
     startSeed: number,
     workspace: Workspace,
-  ): Promise<boolean> {
+    settingFilePath?: string | null,
+  ): Promise<string | null> {
     try {
-      // 設定をバックアップ
-      await this.backupConfig(workspace);
+      const sourcePath = settingFilePath || this.getConfigPath(workspace);
 
       // 現在の設定を読み込む
-      const currentConfig = await this.getConfig(workspace);
+      const content = await fs.readFile(sourcePath, 'utf-8');
+      const currentConfig = parse(content) as PahcerConfig;
 
       // テスト設定を更新
       const updatedConfig = {
@@ -144,15 +121,16 @@ export class ConfigService {
         },
       };
 
-      // smol-tomlのstringifyを使用してTOML文字列を生成
+      // 一時ファイルに書き出す
+      const dir = path.dirname(sourcePath);
+      const tempPath = path.join(dir, '.pahcer_studio_tmp.toml');
       const tomlContent = stringify(updatedConfig);
-      const configPath = this.getConfigPath(workspace);
-      await fs.writeFile(configPath, tomlContent, 'utf-8');
+      await fs.writeFile(tempPath, tomlContent, 'utf-8');
 
-      return true;
+      return tempPath;
     } catch (error) {
-      console.error(`Error updating config for test: ${error}`);
-      return false;
+      console.error(`Error creating temp config for test: ${error}`);
+      return null;
     }
   }
 

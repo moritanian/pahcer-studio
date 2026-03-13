@@ -22,6 +22,7 @@ export class ExecutionService extends EventEmitter {
   private readonly configService: ConfigService;
   private readonly scoreAnalysisService: ScoreAnalysisService;
   private readonly runningExecutions = new Set<string>();
+  private readonly executionTempConfigs = new Map<string, string>();
 
   constructor(
     private readonly executionRepository: IExecutionRepository,
@@ -47,25 +48,29 @@ export class ExecutionService extends EventEmitter {
     const executionId = await this.generateNextExecutionId(workspace);
     this.runningExecutions.add(workspace.id);
 
-    // Python側と同じように、pahcer_config.tomlを更新
-    this.emitLog(executionId, 'info', 'Updating pahcer_config.toml for test execution...');
-    const configUpdated = await this.configService.updateConfigForTest(
+    // 一時設定ファイルを作成（元のファイルには触れない）
+    this.emitLog(executionId, 'info', 'Creating temp config for test execution...');
+    const tempConfigPath = await this.configService.createTempConfigForTest(
       request.testCaseCount,
       request.startSeed,
       workspace,
+      request.settingFile,
     );
 
-    if (!configUpdated) {
+    if (!tempConfigPath) {
       this.emitLog(
         executionId,
         'warn',
-        'Failed to update pahcer_config.toml, but continuing execution...',
+        'Failed to create temp config, but continuing execution...',
       );
     } else {
+      this.executionTempConfigs.set(executionId, tempConfigPath);
+      // 一時ファイルを --setting-file として使うようリクエストを上書き
+      request = { ...request, settingFile: tempConfigPath };
       this.emitLog(
         executionId,
         'info',
-        `Config updated: start_seed=${request.startSeed}, end_seed=${
+        `Temp config created: start_seed=${request.startSeed}, end_seed=${
           request.startSeed + request.testCaseCount
         }`,
       );
@@ -103,13 +108,7 @@ export class ExecutionService extends EventEmitter {
   async stopExecution(executionId: string, workspace: Workspace): Promise<void> {
     const killed = this.processManager.killProcess(executionId);
     if (killed) {
-      // プロセス停止直後にconfigを復元
-      const configRestored = await this.configService.restoreConfig(workspace);
-
-      if (!configRestored) {
-        this.emitLog(executionId, 'warn', 'Failed to restore pahcer_config.toml from backup');
-      }
-
+      await this.cleanupTempConfig(executionId);
       await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
       this.runningExecutions.delete(workspace.id);
     }
@@ -166,6 +165,17 @@ export class ExecutionService extends EventEmitter {
   }
 
   /**
+   * 一時設定ファイルを削除する
+   */
+  private async cleanupTempConfig(executionId: string): Promise<void> {
+    const tempPath = this.executionTempConfigs.get(executionId);
+    if (tempPath) {
+      await this.configService.cleanupTempConfig(tempPath);
+      this.executionTempConfigs.delete(executionId);
+    }
+  }
+
+  /**
    * pacher実行のメインロジック
    */
   private async executePacher(
@@ -187,12 +197,8 @@ export class ExecutionService extends EventEmitter {
         },
       );
 
-      // pacher実行完了直後にconfigを復元
-      const configRestored = await this.configService.restoreConfig(workspace);
-
-      if (!configRestored) {
-        this.emitLog(executionId, 'warn', 'Failed to restore pahcer_config.toml from backup');
-      }
+      // 一時設定ファイルを削除
+      await this.cleanupTempConfig(executionId);
 
       if (result.success) {
         await this.finalizeExecution(executionId, 'COMPLETED', workspace);
@@ -200,16 +206,8 @@ export class ExecutionService extends EventEmitter {
         await this.finalizeExecution(executionId, 'FAILED', workspace);
       }
     } catch (error) {
-      // エラーが発生した場合もconfigを復元
-      const configRestored = await this.configService.restoreConfig(workspace);
-
-      if (!configRestored) {
-        this.emitLog(
-          executionId,
-          'warn',
-          'Failed to restore pahcer_config.toml from backup after error',
-        );
-      }
+      // エラーが発生した場合も一時ファイルを削除
+      await this.cleanupTempConfig(executionId);
 
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.emitLog(executionId, 'error', `pacher execution error: ${errorMessage}`);

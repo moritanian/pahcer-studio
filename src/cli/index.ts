@@ -356,7 +356,11 @@ async function runTests(options: {
     freezeBestScores: options.freeze || false,
     testCaseCount: options.testCaseCount,
     startSeed: options.startSeed,
-    settingFile: options.settingFile || null,
+    settingFile: options.settingFile
+      ? path.isAbsolute(options.settingFile)
+        ? options.settingFile
+        : path.resolve(targetDir, options.settingFile)
+      : null,
   };
 
   try {
