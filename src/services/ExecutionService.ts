@@ -70,9 +70,7 @@ export class ExecutionService extends EventEmitter {
       this.emitLog(
         executionId,
         'info',
-        `Temp config created: start_seed=${request.startSeed}, end_seed=${
-          request.startSeed + request.testCaseCount
-        }`,
+        `Temp config created: ${tempConfigPath}`,
       );
     }
 

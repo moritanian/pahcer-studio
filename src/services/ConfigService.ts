@@ -99,8 +99,8 @@ export class ConfigService {
    * @returns 一時ファイルのパス。失敗時はnull。
    */
   async createTempConfigForTest(
-    testCaseCount: number,
-    startSeed: number,
+    testCaseCount: number | null,
+    startSeed: number | null,
     workspace: Workspace,
     settingFilePath?: string | null,
   ): Promise<string | null> {
@@ -111,13 +111,20 @@ export class ConfigService {
       const content = await fs.readFile(sourcePath, 'utf-8');
       const currentConfig = parse(content) as PahcerConfig;
 
+      // 指定がなければ元の設定をそのまま使う
+      const effectiveStartSeed = startSeed ?? currentConfig.test?.start_seed ?? 0;
+      const effectiveEndSeed =
+        testCaseCount != null
+          ? effectiveStartSeed + testCaseCount
+          : (currentConfig.test?.end_seed ?? effectiveStartSeed + 100);
+
       // テスト設定を更新
       const updatedConfig = {
         ...currentConfig,
         test: {
           ...currentConfig.test,
-          start_seed: startSeed,
-          end_seed: startSeed + testCaseCount,
+          start_seed: effectiveStartSeed,
+          end_seed: effectiveEndSeed,
         },
       };
 

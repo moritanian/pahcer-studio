@@ -253,7 +253,7 @@ program
 function parseSeedOption(
   seedArg: string | undefined,
   countArg: string | undefined,
-): { startSeed: number; testCaseCount: number } {
+): { startSeed: number | null; testCaseCount: number | null } {
   if (seedArg !== undefined && /[:-]/.test(seedArg) && /^\d/.test(seedArg)) {
     // Range format: "10:20" or "10-20" (hyphen at end of class = literal hyphen)
     const parts = seedArg.split(/[:-]/);
@@ -278,14 +278,14 @@ function parseSeedOption(
     }
     return { startSeed: seed, testCaseCount: 1 };
   } else {
-    // Default behaviour: seed as start seed, count as test case count
-    const startSeed = seedArg !== undefined ? parseInt(seedArg, 10) : 0;
-    const testCaseCount = countArg !== undefined ? parseInt(countArg, 10) : 100;
-    if (isNaN(startSeed) || startSeed < 0) {
+    // seed/count が未指定ならnull（設定ファイルの値を使う）
+    const startSeed = seedArg !== undefined ? parseInt(seedArg, 10) : null;
+    const testCaseCount = countArg !== undefined ? parseInt(countArg, 10) : null;
+    if (startSeed != null && (isNaN(startSeed) || startSeed < 0)) {
       console.error('Error: Invalid seed value. Must be a non-negative integer.');
       process.exit(1);
     }
-    if (isNaN(testCaseCount) || testCaseCount < 1) {
+    if (testCaseCount != null && (isNaN(testCaseCount) || testCaseCount < 1)) {
       console.error('Error: Invalid count value. Must be a positive integer.');
       process.exit(1);
     }
@@ -295,8 +295,8 @@ function parseSeedOption(
 
 // Run pahcer tests
 async function runTests(options: {
-  testCaseCount: number;
-  startSeed: number;
+  testCaseCount: number | null;
+  startSeed: number | null;
   comment?: string;
   shuffle?: boolean;
   freeze?: boolean;
