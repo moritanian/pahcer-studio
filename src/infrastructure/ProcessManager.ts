@@ -59,8 +59,13 @@ export class ProcessManager {
         JSON.stringify(initialInfo, null, 2),
       );
 
-      // tools/out をバックアップ
-      await this.backupOutDirectory(executionId, executionCwd);
+      // tools/out を削除（pahcer が新しい結果を出力するため）
+      const outDir = PathHelper.getOutputDirectory(executionCwd);
+      try {
+        await fs.rm(outDir, { recursive: true, force: true });
+      } catch {
+        // tools/out が存在しない場合は無視
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(
@@ -130,14 +135,6 @@ export class ProcessManager {
             }
           }
 
-          // tools/out_bak を復元
-          try {
-            await this.restoreOutDirectory(executionId, executionCwd);
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.error(`[${executionId}] Failed to restore out directory: ${message}`);
-          }
-
           resolve({
             success,
             executionTime,
@@ -150,17 +147,6 @@ export class ProcessManager {
 
         child.on('error', async (error) => {
           this.activeProcesses.delete(executionId);
-
-          // エラー時も復元を試みる
-          try {
-            await this.restoreOutDirectory(executionId, executionCwd);
-          } catch (restoreError) {
-            const message =
-              restoreError instanceof Error ? restoreError.message : String(restoreError);
-            console.error(
-              `[${executionId}] Failed to restore out directory after error: ${message}`,
-            );
-          }
 
           resolve({
             success: false,
@@ -291,68 +277,4 @@ export class ProcessManager {
     }
   }
 
-  /**
-   * tools/out が存在する場合、tools/out_bak にバックアップする
-   */
-  private async backupOutDirectory(executionId: string, workingDir: string): Promise<void> {
-    const outDir = PathHelper.getOutputDirectory(workingDir);
-    const outBakDir = PathHelper.getOutputBackupDirectory(workingDir);
-
-    try {
-      // tools/out が存在するかチェック
-      await fs.access(outDir);
-
-      // tools/out_bak が既に存在する場合は削除
-      try {
-        await fs.access(outBakDir);
-        await fs.rm(outBakDir, { recursive: true, force: true });
-      } catch {
-        // out_bak が存在しない場合は無視
-      }
-
-      // tools/out を tools/out_bak にリネーム
-      await fs.rename(outDir, outBakDir);
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err?.code === 'ENOENT') {
-        console.info(`[${executionId}] tools/out does not exist, skipping backup`);
-      } else {
-        console.error(`[${executionId}] Failed to backup out directory:`, error);
-        throw error;
-      }
-    }
-  }
-
-  /**
-   * tools/out_bak が存在する場合、tools/out を削除してから tools/out_bak を tools/out に復元する
-   */
-  private async restoreOutDirectory(executionId: string, workingDir: string): Promise<void> {
-    const outDir = path.join(workingDir, 'tools', 'out');
-    const outBakDir = path.join(workingDir, 'tools', 'out_bak');
-
-    try {
-      // tools/out_bak が存在するかチェック
-      await fs.access(outBakDir);
-
-      // tools/out が存在する場合は削除
-      try {
-        await fs.access(outDir);
-        await fs.rm(outDir, { recursive: true, force: true });
-      } catch {
-        // tools/out が存在しない場合は無視
-        console.info(`[${executionId}] tools/out does not exist, skipping restoration`);
-      }
-
-      // tools/out_bak を tools/out にリネーム
-      await fs.rename(outBakDir, outDir);
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err?.code === 'ENOENT') {
-        console.info(`[${executionId}] tools/out_bak does not exist, skipping restoration`);
-      } else {
-        console.error(`[${executionId}] Failed to restore out directory:`, error);
-        throw error;
-      }
-    }
-  }
 }

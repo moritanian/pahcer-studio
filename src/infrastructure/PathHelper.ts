@@ -156,12 +156,6 @@ export class PathHelper {
     return path.join(workspaceDir, 'tools', 'out');
   }
 
-  /**
-   * output バックアップディレクトリのパスを取得
-   */
-  static getOutputBackupDirectory(workspaceDir: string): string {
-    return path.join(workspaceDir, 'tools', 'out_bak');
-  }
 
   /**
    * json ディレクトリのパスを取得
