@@ -265,7 +265,7 @@ const WorkspaceSelectorContent: React.FC<WorkspaceSelectorContentProps> = ({
   // スタンドアロンモードでは通常のページとして表示
   if (standalone) {
     return (
-      <Container maxWidth="sm" sx={{ mt: 8 }}>
+      <Container maxWidth="sm" sx={{ mt: 4, mb: 4, height: '100vh', overflow: 'auto' }}>
         <Paper elevation={3} sx={{ p: 4 }}>
           <Typography variant="h4" gutterBottom>
             ワークスペースを選択
