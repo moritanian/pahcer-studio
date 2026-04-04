@@ -160,7 +160,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
         }
       }
     },
-    [selectedExecution, onError, workspaceId],
+    [selectedExecution?.id, onError, workspaceId],
   );
 
   /**
@@ -208,11 +208,17 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
   };
 
   // 選択された実行が変わったら同じシードで再描画
+  // ID ベースで変更を検知し、ステータス更新だけでは再描画しない
+  const prevExecutionIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedExecution?.id && selectedExecution.status === 'COMPLETED') {
+    const currentId = selectedExecution?.id ?? null;
+    const isNewSelection = currentId !== prevExecutionIdRef.current;
+    prevExecutionIdRef.current = currentId;
+
+    if (isNewSelection && selectedExecution?.id && selectedExecution.status === 'COMPLETED') {
       handleSeedChange(selectedSeed, false);
     }
-  }, [selectedExecution, handleSeedChange, selectedSeed]);
+  }, [selectedExecution?.id, selectedExecution?.status, handleSeedChange, selectedSeed]);
 
   // selectedSeed が変われば draft も同期
   useEffect(() => {

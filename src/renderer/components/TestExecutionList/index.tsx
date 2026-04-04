@@ -49,6 +49,16 @@ const TestExecutionList: React.FC<TestExecutionListProps> = ({ workspaceId }) =>
     onStatusChange: handleStatusChange,
   });
 
+  // executions が更新されたら selectedExecution も同期する（ステータス変更の反映）
+  useEffect(() => {
+    if (selectedExecution) {
+      const updated = executions.find((e) => e.id === selectedExecution.id);
+      if (updated && updated !== selectedExecution) {
+        setSelectedExecution(updated);
+      }
+    }
+  }, [executions]);
+
   // テスト実行選択ハンドラー
   const handleExecutionSelect = (execution: TestExecution) => {
     setSelectedExecution(execution);
