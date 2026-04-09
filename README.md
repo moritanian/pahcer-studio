@@ -163,7 +163,7 @@ phst --help              # ヘルプを表示
 - AWS CLI が設定済み（`aws configure`）
 - AWS CDK がインストール済み（`npm install -g aws-cdk`）
 
-### 1. インフラのデプロイ
+### 1. インフラのデプロイ（初回のみ）
 
 `cdk/` ディレクトリに CDK スタックがあります：
 
@@ -172,6 +172,9 @@ cd cdk
 yarn install
 npx cdk deploy
 ```
+
+> **CDK を初めて使う場合**: デプロイ前に `npx cdk bootstrap` の実行が必要です。
+> これは AWS アカウントに CDK が使用するリソース（S3 バケット等）を作成するワンタイムのセットアップです。
 
 以下のリソースが作成されます：
 - **S3 バケット**: ツールバイナリ・実行結果の保存
@@ -189,10 +192,13 @@ region = "ap-northeast-1"
 function_name = "ahc-tester"          # CDK出力: FunctionName
 tools_bucket = "ahc-tester-tools-XXX" # CDK出力: ToolsBucketName
 parallel = 10                          # 同時Lambda起動数
+# default = true                       # true: phst run でデフォルトLambda実行
 # profile = "admin"                    # デフォルト以外のAWSプロファイルを使う場合
 ```
 
-### 3. ツールのビルドとデプロイ
+`default = true` を設定すると、`phst run` で `--lambda`/`--local` を指定しなくても Lambda 実行になります。
+
+### 3. ツールのビルドとデプロイ（AHC コンテストごとに1回）
 
 AHC プロジェクトのツール（gen, tester, vis 等）をビルドして S3 にアップロードします：
 
@@ -206,7 +212,7 @@ phst aws deploy-tools
 ### 4. Lambda で実行
 
 ```bash
-# Lambda で実行
+# Lambda で実行（pahcer_config.toml の compile_steps を実行後、Lambda に送信）
 phst run --lambda
 
 # ローカルで実行（従来通り）
@@ -227,7 +233,9 @@ phst run --local                   # ローカルで実行
 
 ### AWS 権限
 
-Lambda 実行に使用する AWS プロファイルには以下の権限が必要です：
+**CDK デプロイ時**には、CloudFormation / Lambda / S3 / IAM 等のリソース作成権限が必要です。AdministratorAccess ポリシーが付与されたプロファイルの使用を推奨します。
+
+**Lambda 実行時**に使用する AWS プロファイルには以下の権限が必要です：
 
 - `lambda:InvokeFunction`（対象: `ahc-tester` 関数）
 - `s3:PutObject` / `s3:GetObject`（対象: `ahc-tester-tools-*` バケット）
