@@ -131,9 +131,14 @@ phst run --freeze                 # ベストスコアを固定
 phst launch              # サーバー起動 + ブラウザを開く
 phst launch --no-browser # サーバー起動のみ（ブラウザを開かない）
 phst run                 # テスト実行（現在のディレクトリをワークスペースとして使用）
+phst run --lambda        # AWS Lambda で実行
+phst run --local         # ローカルで実行
 phst terminate           # サーバー終了
+phst results list        # 実行履歴一覧
+phst results get <id>    # 実行結果の詳細表示
+phst aws deploy-tools    # ツールを S3 にアップロード
+phst aws status          # Lambda 設定の確認
 phst --help              # ヘルプを表示
-phst run --help          # runコマンドのオプション一覧
 ```
 
 **`phst run` コマンドのオプション:**
@@ -145,6 +150,89 @@ phst run --help          # runコマンドのオプション一覧
 | `-c, --comment <string>` | 実行に付けるコメント           | なし       |
 | `--shuffle`              | テストケースの順序をシャッフル | false      |
 | `--freeze`               | ベストスコアを固定             | false      |
+| `--lambda`               | AWS Lambda で実行              | -          |
+| `--local`                | ローカルで実行                 | -          |
+
+## ☁️ AWS Lambda 実行（実験的）
+
+大量の seed を高速に並列実行するために、AWS Lambda をバックエンドとして使用できます。
+
+### 前提条件
+
+- AWS アカウント
+- AWS CLI が設定済み（`aws configure`）
+- AWS CDK がインストール済み（`npm install -g aws-cdk`）
+
+### 1. インフラのデプロイ
+
+`lambda_test/cdk` ディレクトリにサンプル CDK スタックがあります：
+
+```bash
+cd lambda_test/cdk
+npm install
+npx cdk deploy
+```
+
+以下のリソースが作成されます：
+- **S3 バケット**: ツールバイナリ・実行結果の保存
+- **Lambda 関数**: テスト実行（メモリ 3008MB / タイムアウト 15分）
+
+デプロイ完了時に表示される出力値（`FunctionName`, `ToolsBucketName`）を控えてください。
+
+### 2. pahcer_config.toml に設定を追加
+
+AHC プロジェクトの `pahcer_config.toml` に `[aws_lambda]` セクションを追加します：
+
+```toml
+[aws_lambda]
+region = "ap-northeast-1"
+function_name = "ahc-tester"          # CDK出力: FunctionName
+tools_bucket = "ahc-tester-tools-XXX" # CDK出力: ToolsBucketName
+parallel = 10                          # 同時Lambda起動数
+# profile = "admin"                    # デフォルト以外のAWSプロファイルを使う場合
+```
+
+### 3. ツールのビルドとデプロイ
+
+AHC プロジェクトのツール（gen, tester, vis 等）をビルドして S3 にアップロードします：
+
+```bash
+cd /path/to/your-ahc-project/tools
+cargo build --release
+
+phst aws deploy-tools
+```
+
+### 4. Lambda で実行
+
+```bash
+# Lambda で実行
+phst run --lambda
+
+# ローカルで実行（従来通り）
+phst run --local
+
+# pahcer_config.toml の設定に従う（default 未設定ならローカル）
+phst run
+```
+
+### Lambda 関連コマンド
+
+```bash
+phst aws deploy-tools [directory]  # ツールを S3 にアップロード
+phst aws status [directory]        # Lambda 設定の確認
+phst run --lambda                  # Lambda で実行
+phst run --local                   # ローカルで実行
+```
+
+### 注意事項
+
+- Lambda の CPU（Xeon）はローカル PC より遅い場合があります（目安: Ryzen 5 の約 50%）
+- バイナリは動的リンク（glibc）で動作します。musl static build はスコアが劣化する場合があります
+- バイナリサイズは 4.5MB 以下である必要があります（release build + strip 推奨）
+- AWS の利用料金が発生します（目安: 3000 seed × 2s/seed で約 9〜45 円）
+
+---
 
 ### 開発者向け（開発環境）
 
