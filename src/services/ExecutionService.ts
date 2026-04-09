@@ -321,8 +321,10 @@ export class ExecutionService extends EventEmitter {
         await this.resultProcessor.updateBestScores(allResults, workspace, objective);
       }
 
-      this.emitLog(executionId, 'info', 'Downloading case outputs from S3...');
-      await this.lambdaService.downloadCaseOutputs(pahcerConfig, workspace, executionId, seeds);
+      // Download case outputs in background (not blocking score display)
+      this.lambdaService.downloadCaseOutputs(pahcerConfig, workspace, executionId, seeds).catch(
+        (err) => console.error(`Failed to download case outputs: ${err}`),
+      );
 
       await this.cleanupTempConfig(executionId);
 

@@ -26,6 +26,13 @@ interface LambdaResponse {
 }
 
 export class LambdaService {
+  private cachedLambdaClient?: { key: string; client: LambdaClient };
+  private cachedS3Client?: { key: string; client: S3Client };
+
+  private getCacheKey(config: AwsLambdaConfig): string {
+    return `${config.region}:${config.profile || 'default'}`;
+  }
+
   private getClientOptions(config: AwsLambdaConfig): {
     region: string;
     credentials?: AwsCredentialIdentityProvider;
@@ -36,16 +43,27 @@ export class LambdaService {
     if (config.profile) {
       options.credentials = fromIni({ profile: config.profile });
     }
-    // profile 未指定時はデフォルトクレデンシャルチェーン
     return options;
   }
 
   private getLambdaClient(config: AwsLambdaConfig): LambdaClient {
-    return new LambdaClient(this.getClientOptions(config));
+    const key = this.getCacheKey(config);
+    if (this.cachedLambdaClient?.key === key) {
+      return this.cachedLambdaClient.client;
+    }
+    const client = new LambdaClient(this.getClientOptions(config));
+    this.cachedLambdaClient = { key, client };
+    return client;
   }
 
   private getS3Client(config: AwsLambdaConfig): S3Client {
-    return new S3Client(this.getClientOptions(config));
+    const key = this.getCacheKey(config);
+    if (this.cachedS3Client?.key === key) {
+      return this.cachedS3Client.client;
+    }
+    const client = new S3Client(this.getClientOptions(config));
+    this.cachedS3Client = { key, client };
+    return client;
   }
 
   async deployTools(
