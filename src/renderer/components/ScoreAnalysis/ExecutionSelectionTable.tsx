@@ -1,4 +1,5 @@
 import type React from 'react';
+import { useState } from 'react';
 import {
   Box,
   Paper,
@@ -12,8 +13,10 @@ import {
   TableRow,
   Checkbox,
   CircularProgress,
+  TextField,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import type { TestExecution } from '../../../schemas/execution';
 
 interface ExecutionSelectionTableProps {
@@ -31,6 +34,16 @@ const ExecutionSelectionTable: React.FC<ExecutionSelectionTableProps> = ({
   onToggleExecution,
   onClearAllSelections,
 }) => {
+  const [testCountFilter, setTestCountFilter] = useState<string>('');
+
+  const filteredExecutions = executions.filter((exec) => {
+    if (testCountFilter) {
+      const count = exec.totalCount ?? 0;
+      if (count !== parseInt(testCountFilter, 10)) return false;
+    }
+    return true;
+  });
+
   return (
     <Paper sx={{ p: 2, mb: 3 }}>
       <Box
@@ -41,7 +54,17 @@ const ExecutionSelectionTable: React.FC<ExecutionSelectionTableProps> = ({
           justifyContent: 'space-between',
         }}
       >
-        <Typography variant="h6">テスト実行リスト</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6">テスト実行リスト</Typography>
+          <FilterListIcon fontSize="small" sx={{ opacity: 0.6, ml: 2 }} />
+          <TextField
+            size="small"
+            placeholder="テスト数"
+            value={testCountFilter}
+            onChange={(e) => setTestCountFilter(e.target.value.replace(/[^0-9]/g, ''))}
+            sx={{ width: 80, '& .MuiInputBase-root': { height: 28, fontSize: '0.8rem' } }}
+          />
+        </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
             variant="outlined"
@@ -73,7 +96,7 @@ const ExecutionSelectionTable: React.FC<ExecutionSelectionTableProps> = ({
               </TableRow>
             </TableHead>
             <TableBody>
-              {executions.map((execution) => (
+              {filteredExecutions.map((execution) => (
                 <TableRow
                   key={execution.id}
                   selected={selectedExecutionIds.includes(execution.id!)}
