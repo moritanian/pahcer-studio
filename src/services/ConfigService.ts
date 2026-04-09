@@ -4,6 +4,26 @@ import { parse, stringify } from 'smol-toml';
 import { PathHelper } from '../infrastructure/PathHelper';
 import type { Workspace } from '../schemas/workspace';
 
+export interface AwsLambdaConfig {
+  default?: boolean;
+  parallel?: number;
+  profile?: string;
+  region: string;
+  role_arn?: string;
+  function_name: string;
+  tools_bucket: string;
+}
+
+export interface TestStep {
+  program: string;
+  args?: string[];
+  stdin?: string;
+  stdout?: string;
+  stderr?: string;
+  current_dir?: string;
+  measure_time?: boolean;
+}
+
 export interface PahcerConfig {
   general?: {
     version?: string;
@@ -18,9 +38,10 @@ export interface PahcerConfig {
     end_seed?: number;
     threads?: number;
     out_dir?: string;
-    compile_steps?: string[];
-    test_steps?: string[];
+    compile_steps?: TestStep[];
+    test_steps?: TestStep[];
   };
+  aws_lambda?: AwsLambdaConfig;
 }
 
 /**

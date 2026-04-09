@@ -8,11 +8,15 @@ import type {
   TestCase,
 } from '../schemas/execution';
 import type { Workspace } from '../schemas/workspace';
+import * as path from 'path';
 import type { IExecutionRepository } from '../repositories/IExecutionRepository';
 import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
 import type { ProcessManager } from '../infrastructure/ProcessManager';
 import { ConfigService } from './ConfigService';
 import { ScoreAnalysisService } from './ScoreAnalysisService';
+import { LambdaService } from './LambdaService';
+import { ResultProcessor } from './ResultProcessor';
+import type { SeedResult } from './ResultProcessor';
 
 /**
  * pacherツール実行のオーケストレーションを行うサービスクラス。
@@ -21,8 +25,11 @@ import { ScoreAnalysisService } from './ScoreAnalysisService';
 export class ExecutionService extends EventEmitter {
   private readonly configService: ConfigService;
   private readonly scoreAnalysisService: ScoreAnalysisService;
+  private readonly lambdaService: LambdaService;
+  private readonly resultProcessor: ResultProcessor;
   private readonly runningExecutions = new Set<string>();
   private readonly executionTempConfigs = new Map<string, string>();
+  private readonly lambdaAbortControllers = new Map<string, AbortController>();
 
   constructor(
     private readonly executionRepository: IExecutionRepository,
@@ -30,10 +37,14 @@ export class ExecutionService extends EventEmitter {
     private readonly processManager: ProcessManager,
     configService: ConfigService,
     scoreAnalysisService: ScoreAnalysisService,
+    lambdaService: LambdaService,
+    resultProcessor: ResultProcessor,
   ) {
     super();
     this.configService = configService;
     this.scoreAnalysisService = scoreAnalysisService;
+    this.lambdaService = lambdaService;
+    this.resultProcessor = resultProcessor;
   }
 
   /**
@@ -90,12 +101,24 @@ export class ExecutionService extends EventEmitter {
     };
     await this.executionRepository.save(initialExecution, workspace);
 
-    // 非同期でpacher実行を開始
-    this.executePacher(executionId, request, workspace).catch((error) => {
-      console.error(`Execution ${executionId} failed fatally:`, error);
-      this.updateExecutionStatus(executionId, 'FAILED', workspace);
-      this.runningExecutions.delete(workspace.id);
-    });
+    // Lambda or Local execution
+    const pahcerConfig = await this.configService.getConfig(workspace);
+    const useLambda = request.useLambda ?? pahcerConfig.aws_lambda?.default ?? false;
+
+    if (useLambda) {
+      this.executeLambda(executionId, request, pahcerConfig, workspace).catch((error) => {
+        console.error(`Lambda execution ${executionId} failed fatally:`, error);
+        this.updateExecutionStatus(executionId, 'FAILED', workspace);
+        this.runningExecutions.delete(workspace.id);
+      });
+    } else {
+      // 非同期でpacher実行を開始
+      this.executePacher(executionId, request, workspace).catch((error) => {
+        console.error(`Execution ${executionId} failed fatally:`, error);
+        this.updateExecutionStatus(executionId, 'FAILED', workspace);
+        this.runningExecutions.delete(workspace.id);
+      });
+    }
 
     return executionId;
   }
@@ -104,8 +127,20 @@ export class ExecutionService extends EventEmitter {
    * テスト実行を停止する
    */
   async stopExecution(executionId: string, workspace: Workspace): Promise<void> {
+    // Try local process first
     const killed = this.processManager.killProcess(executionId);
     if (killed) {
+      await this.cleanupTempConfig(executionId);
+      await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
+      this.runningExecutions.delete(workspace.id);
+      return;
+    }
+
+    // Try Lambda abort
+    const controller = this.lambdaAbortControllers.get(executionId);
+    if (controller) {
+      controller.abort();
+      this.lambdaAbortControllers.delete(executionId);
       await this.cleanupTempConfig(executionId);
       await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
       this.runningExecutions.delete(workspace.id);
@@ -210,6 +245,102 @@ export class ExecutionService extends EventEmitter {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.emitLog(executionId, 'error', `pacher execution error: ${errorMessage}`);
       await this.finalizeExecution(executionId, 'FAILED', workspace);
+    }
+  }
+
+  /**
+   * Lambda実行のメインロジック
+   */
+  private async executeLambda(
+    executionId: string,
+    request: TestExecutionRequest,
+    pahcerConfig: import('./ConfigService').PahcerConfig,
+    workspace: Workspace,
+  ): Promise<void> {
+    const abortController = new AbortController();
+    this.lambdaAbortControllers.set(executionId, abortController);
+    const startTime = new Date().toISOString();
+    try {
+      await this.updateExecutionStatus(executionId, 'RUNNING', workspace);
+      this.emitLog(executionId, 'info', `Lambda test execution started: ${executionId}`);
+
+      const lambdaConfig = pahcerConfig.aws_lambda;
+      if (!lambdaConfig) {
+        throw new Error('[aws_lambda] section not found in pahcer_config.toml');
+      }
+
+      // Determine seed range
+      const startSeed = request.startSeed ?? pahcerConfig.test?.start_seed ?? 0;
+      const endSeed = request.testCaseCount != null
+        ? startSeed + request.testCaseCount
+        : (pahcerConfig.test?.end_seed ?? startSeed + 100);
+      const seeds: number[] = [];
+      for (let i = startSeed; i < endSeed; i++) {
+        seeds.push(i);
+      }
+
+      this.emitLog(executionId, 'info', `Seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), Parallel: ${lambdaConfig.parallel || 10}`);
+
+      const binaryPath = path.join(workspace.targetDirectory, 'a.out');
+      this.emitLog(executionId, 'info', `Binary: ${binaryPath}`);
+
+      // Load best scores and objective for relative score calculation
+      const bestScores = await this.configService.getBestScores(workspace);
+      const objective = await this.configService.getObjective(workspace);
+
+      const log = (level: 'info' | 'error', message: string) => this.emitLog(executionId, level, message);
+      const state = this.resultProcessor.createProgressState(seeds.length);
+
+      this.resultProcessor.printHeader(log);
+
+      // Execute on Lambda
+      const allResults: SeedResult[] = await this.lambdaService.execute(
+        pahcerConfig,
+        workspace,
+        executionId,
+        binaryPath,
+        seeds,
+        (chunkResults) => {
+          this.resultProcessor.printSeedResults(chunkResults, state, bestScores, objective, log);
+          this.emit('execution:progress', {
+            executionId,
+            acceptedCount: state.completedCount,
+            totalCount: seeds.length,
+          });
+        },
+        abortController.signal,
+      );
+
+      // Post-processing
+      await this.resultProcessor.saveSummary(executionId, allResults, workspace, {
+        startTime,
+        comment: request.comment || '',
+        state,
+      });
+      if (!request.freezeBestScores) {
+        await this.resultProcessor.updateBestScores(allResults, workspace, objective);
+      }
+
+      this.emitLog(executionId, 'info', 'Downloading case outputs from S3...');
+      await this.lambdaService.downloadCaseOutputs(pahcerConfig, workspace, executionId, seeds);
+
+      await this.cleanupTempConfig(executionId);
+
+      this.resultProcessor.printSummary(allResults, state, log);
+
+      await this.finalizeExecution(executionId, 'COMPLETED', workspace);
+    } catch (error) {
+      await this.cleanupTempConfig(executionId);
+      if (abortController.signal.aborted) {
+        this.emitLog(executionId, 'info', 'Lambda execution cancelled');
+        await this.finalizeExecution(executionId, 'CANCELLED', workspace);
+      } else {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.emitLog(executionId, 'error', `Lambda execution error: ${errorMessage}`);
+        await this.finalizeExecution(executionId, 'FAILED', workspace);
+      }
+    } finally {
+      this.lambdaAbortControllers.delete(executionId);
     }
   }
 

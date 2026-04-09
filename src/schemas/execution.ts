@@ -50,6 +50,7 @@ export const TestExecutionRequestSchema = z.object({
   testCaseCount: z.number().int().min(1).nullable().default(null),
   startSeed: z.number().int().min(0).nullable().default(null),
   settingFile: z.string().nullable().default(null),
+  useLambda: z.boolean().nullable().default(null),
 });
 
 /**

@@ -302,6 +302,8 @@ async function runTests(options: {
   freeze?: boolean;
   directory?: string;
   settingFile?: string;
+  lambda?: boolean;
+  local?: boolean;
 }): Promise<void> {
   const isRunning = await isServerRunning();
 
@@ -349,6 +351,11 @@ async function runTests(options: {
     process.exit(1);
   }
 
+  // Determine Lambda/Local mode
+  let useLambda: boolean | null = null;
+  if (options.lambda) useLambda = true;
+  if (options.local) useLambda = false;
+
   // Start test execution
   const executionRequest = {
     comment: options.comment || null,
@@ -361,6 +368,7 @@ async function runTests(options: {
         ? options.settingFile
         : path.resolve(targetDir, options.settingFile)
       : null,
+    useLambda,
   };
 
   try {
@@ -514,6 +522,8 @@ program
   .option('--shuffle', 'Shuffle test case order', false)
   .option('--freeze', 'Freeze best scores', false)
   .option('-f, --setting-file <path>', 'Path to the setting file')
+  .option('--lambda', 'Run on AWS Lambda')
+  .option('--local', 'Run locally')
   .action(async (directory, options) => {
     try {
       const { startSeed, testCaseCount } = parseSeedOption(options.seed, options.count);
@@ -525,6 +535,8 @@ program
         freeze: options.freeze,
         directory: directory,
         settingFile: options.settingFile,
+        lambda: options.lambda,
+        local: options.local,
       });
     } catch (error) {
       console.error('Error running tests:', error);
@@ -740,6 +752,97 @@ resultsCommand
       console.log(JSON.stringify(updated, null, 2));
     } catch (error) {
       console.error('Error updating execution:', error);
+      process.exit(1);
+    }
+  });
+
+// AWS commands
+const awsCommand = program.command('aws').description('AWS Lambda related commands');
+
+awsCommand
+  .command('deploy-tools [directory]')
+  .description(
+    'Upload built tool binaries (gen, tester, vis) to S3 for Lambda execution\n\n' +
+    'Requires [aws_lambda] section in pahcer_config.toml:\n\n' +
+    '  [aws_lambda]\n' +
+    '  region = "ap-northeast-1"\n' +
+    '  function_name = "ahc-tester"\n' +
+    '  tools_bucket = "ahc-tester-tools-XXXX"\n' +
+    '  parallel = 10\n' +
+    '  # profile = "admin"  # optional: AWS profile (default: credential chain)',
+  )
+  .action(async (directory) => {
+    const isRunning = await isServerRunning();
+    if (!isRunning) {
+      console.log('Server not running, starting server first...');
+      await startServer(false);
+    }
+
+    try {
+      const workspace = await getWorkspace(directory);
+      console.log(`Deploying tools for workspace: ${workspace.targetDirectory}`);
+
+      const response = await fetch(
+        `${SERVER_URL}/api/workspaces/${workspace.id}/aws/deploy-tools`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to deploy tools:', errorData.error || 'Unknown error');
+        process.exit(1);
+      }
+
+      const result = await response.json();
+      console.log(`Uploaded tools: ${result.uploaded.join(', ')}`);
+    } catch (error) {
+      console.error('Error deploying tools:', error);
+      process.exit(1);
+    }
+  });
+
+awsCommand
+  .command('status [directory]')
+  .description('Show AWS Lambda configuration status')
+  .action(async (directory) => {
+    const isRunning = await isServerRunning();
+    if (!isRunning) {
+      console.log('Server not running, starting server first...');
+      await startServer(false);
+    }
+
+    try {
+      const workspace = await getWorkspace(directory);
+      const response = await fetch(
+        `${SERVER_URL}/api/workspaces/${workspace.id}/config`,
+      );
+
+      if (!response.ok) {
+        console.error('Failed to fetch config');
+        process.exit(1);
+      }
+
+      const config = await response.json();
+      const lambdaConfig = config.aws_lambda;
+
+      if (!lambdaConfig) {
+        console.log('No [aws_lambda] section found in pahcer_config.toml');
+        console.log('Lambda execution is not configured.');
+        return;
+      }
+
+      console.log('AWS Lambda Configuration:');
+      console.log(`  Default: ${lambdaConfig.default ? 'Lambda' : 'Local'}`);
+      console.log(`  Region: ${lambdaConfig.region}`);
+      console.log(`  Function: ${lambdaConfig.function_name}`);
+      console.log(`  Parallel: ${lambdaConfig.parallel || 10}`);
+      console.log(`  Tools Bucket: ${lambdaConfig.tools_bucket}`);
+      if (lambdaConfig.profile) console.log(`  Profile: ${lambdaConfig.profile}`);
+    } catch (error) {
+      console.error('Error fetching status:', error);
       process.exit(1);
     }
   });

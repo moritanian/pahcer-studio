@@ -431,6 +431,44 @@ function setupRoutes(
     },
   );
 
+  // AWS Lambda: deploy tools
+  app.post(
+    '/api/workspaces/:workspaceId/aws/deploy-tools',
+    validateWorkspace,
+    async (req, res) => {
+      try {
+        const workspace = req.workspace!;
+        const configService = container.getConfigService();
+        const lambdaService = container.getLambdaService();
+        const pahcerConfig = await configService.getConfig(workspace);
+
+        if (!pahcerConfig.aws_lambda) {
+          return res
+            .status(400)
+            .json({ error: '[aws_lambda] section not found in pahcer_config.toml' });
+        }
+
+        const result = await lambdaService.deployTools(pahcerConfig, workspace);
+        res.json(result);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: errorMessage });
+      }
+    },
+  );
+
+  // Config endpoint (for aws status CLI)
+  app.get('/api/workspaces/:workspaceId/config', validateWorkspace, async (req, res) => {
+    try {
+      const workspace = req.workspace!;
+      const configService = container.getConfigService();
+      const config = await configService.getConfig(workspace);
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
   // SSE Endpoint for Logs
   app.get('/api/events', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');

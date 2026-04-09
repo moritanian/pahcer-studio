@@ -8,6 +8,8 @@ import { ConfigService } from '../services/ConfigService';
 import { AnalysisService } from '../services/AnalysisService';
 import { ExecutionService } from '../services/ExecutionService';
 import { ScoreAnalysisService } from '../services/ScoreAnalysisService';
+import { LambdaService } from '../services/LambdaService';
+import { ResultProcessor } from '../services/ResultProcessor';
 
 /**
  * 依存性注入コンテナ
@@ -23,6 +25,8 @@ export class DIContainer {
   private analysisService?: AnalysisService;
   private executionService?: ExecutionService;
   private scoreAnalysisService?: ScoreAnalysisService;
+  private lambdaService?: LambdaService;
+  private resultProcessor?: ResultProcessor;
 
   private constructor() {
     this.setupDependencies();
@@ -66,6 +70,12 @@ export class DIContainer {
     // ScoreAnalysisServiceを初期化
     this.scoreAnalysisService = new ScoreAnalysisService();
 
+    // LambdaServiceを初期化
+    this.lambdaService = new LambdaService();
+
+    // ResultProcessorを初期化
+    this.resultProcessor = new ResultProcessor(this.configService);
+
     // ExecutionServiceを初期化
     this.executionService = new ExecutionService(
       executionRepository,
@@ -73,6 +83,8 @@ export class DIContainer {
       processManager,
       this.configService,
       this.scoreAnalysisService,
+      this.lambdaService,
+      this.resultProcessor,
     );
 
     // AnalysisServiceを初期化
@@ -139,6 +151,13 @@ export class DIContainer {
     return this.scoreAnalysisService;
   }
 
+  public getLambdaService(): LambdaService {
+    if (!this.lambdaService) {
+      throw new Error('DIContainer not initialized. Call initialize() first.');
+    }
+    return this.lambdaService;
+  }
+
   // テスト用のモック注入
   public registerMock<T>(key: string, mockInstance: T): void {
     this.dependencies.set(key, mockInstance);
@@ -152,6 +171,8 @@ export class DIContainer {
     this.analysisService = undefined;
     this.executionService = undefined;
     this.scoreAnalysisService = undefined;
+    this.lambdaService = undefined;
+    this.resultProcessor = undefined;
     this.setupDependencies();
   }
 }
