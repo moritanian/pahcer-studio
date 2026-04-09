@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Paper,
   Table,
@@ -53,7 +53,41 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
   // テーブル内部の状態
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [rowsPerPage, setRowsPerPage] = useState(-1); // -1 = auto
+  const [autoRows, setAutoRows] = useState(25);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // テーブルコンテナの高さと実際の行高さから表示可能な行数を計算
+  const calcFitRows = useCallback(() => {
+    const container = tableContainerRef.current;
+    if (!container) return 25;
+
+    const tbody = container.querySelector('tbody');
+    const firstRow = tbody?.querySelector('tr');
+    const thead = container.querySelector('thead');
+
+    const rowHeight = firstRow?.getBoundingClientRect().height || 33;
+    const headerHeight = thead?.getBoundingClientRect().height || 33;
+    const available = container.clientHeight - headerHeight;
+    return Math.max(1, Math.floor(available / rowHeight));
+  }, []);
+
+  useEffect(() => {
+    const updateAutoRows = () => {
+      setAutoRows(calcFitRows());
+    };
+    const timer = setTimeout(updateAutoRows, 100);
+    const observer = new ResizeObserver(updateAutoRows);
+    if (tableContainerRef.current) {
+      observer.observe(tableContainerRef.current);
+    }
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [calcFitRows, executions]);
+
+  const effectiveRowsPerPage = rowsPerPage === -1 ? autoRows : rowsPerPage;
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [executionToDelete, setExecutionToDelete] = useState<TestExecution | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -136,15 +170,6 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
     } finally {
       setRefreshing(false);
     }
-  };
-
-  const handleChangePage = (event: unknown, newPage: number) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
   };
 
   const handleDeleteClick = (event: React.MouseEvent, execution: TestExecution) => {
@@ -238,7 +263,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
     return new Date(dateString).toLocaleString('ja-JP');
   };
 
-  const currentPageData = executions.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const currentPageData = executions.slice(page * effectiveRowsPerPage, page * effectiveRowsPerPage + effectiveRowsPerPage);
 
   if (loading) {
     return (
@@ -282,7 +307,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
           </IconButton>
         </Tooltip>
       </Box>
-      <TableContainer sx={{ flexGrow: 1, overflow: 'auto' }}>
+      <TableContainer ref={tableContainerRef} sx={{ flexGrow: 1, minHeight: 0, overflow: 'auto' }}>
         <Table stickyHeader size="small" padding="none">
           <TableHead>
             <TableRow sx={{ backgroundColor: 'rgba(0, 0, 0, 0.04)' }}>
@@ -407,18 +432,38 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
         </Table>
       </TableContainer>
       <TablePagination
-        rowsPerPageOptions={[10, 25, 50]}
+        rowsPerPageOptions={[
+          { value: -1, label: `auto (${autoRows})` },
+          10, 25, 50,
+        ]}
         component="div"
         count={executions.length}
         rowsPerPage={rowsPerPage}
         page={page}
-        onPageChange={handleChangePage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
+        onPageChange={(_, newPage) => {
+          // auto 時は effectiveRowsPerPage でページ計算
+          const maxPage = Math.max(0, Math.ceil(executions.length / effectiveRowsPerPage) - 1);
+          setPage(Math.min(newPage, maxPage));
+        }}
+        onRowsPerPageChange={(e) => {
+          setRowsPerPage(parseInt(e.target.value, 10));
+          setPage(0);
+        }}
         labelRowsPerPage="表示件数:"
-        labelDisplayedRows={({ from, to, count }) =>
-          `${from}-${to} / ${count !== -1 ? count : `${to}以上`}`
-        }
+        labelDisplayedRows={() => {
+          const from = page * effectiveRowsPerPage + 1;
+          const to = Math.min((page + 1) * effectiveRowsPerPage, executions.length);
+          return `${from}-${to} / ${executions.length}`;
+        }}
         sx={{ py: 0 }}
+        backIconButtonProps={{
+          disabled: page === 0,
+          onClick: () => setPage(Math.max(0, page - 1)),
+        }}
+        nextIconButtonProps={{
+          disabled: (page + 1) * effectiveRowsPerPage >= executions.length,
+          onClick: () => setPage(page + 1),
+        }}
       />
 
       {/* Delete Dialog */}
