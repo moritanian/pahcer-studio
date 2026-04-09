@@ -264,7 +264,6 @@ export class ExecutionService extends EventEmitter {
     const startTime = new Date().toISOString();
     try {
       await this.updateExecutionStatus(executionId, 'RUNNING', workspace);
-      this.emitLog(executionId, 'info', `[Lambda] execution started: ${executionId}`);
 
       const lambdaConfig = pahcerConfig.aws_lambda;
       if (!lambdaConfig) {
@@ -282,7 +281,6 @@ export class ExecutionService extends EventEmitter {
       }
 
       const parallel = lambdaConfig.parallel || 10;
-      this.emitLog(executionId, 'info', `[Lambda] seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), parallel: ${parallel}, function: ${lambdaConfig.function_name}`);
 
       // Run compile_steps locally before Lambda invoke
       const compileSteps = pahcerConfig.test?.compile_steps || [];
@@ -309,7 +307,7 @@ export class ExecutionService extends EventEmitter {
         throw new Error('No test_steps defined in pahcer_config.toml');
       }
       const binaryPath = path.resolve(workspace.targetDirectory, testSteps[0].program);
-      this.emitLog(executionId, 'info', `Binary: ${binaryPath}`);
+      this.emitLog(executionId, 'info', `[Lambda] seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), parallel: ${parallel}, function: ${lambdaConfig.function_name}`);
 
       // Load best scores and objective for relative score calculation
       const bestScores = await this.configService.getBestScores(workspace);
