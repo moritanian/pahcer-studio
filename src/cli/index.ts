@@ -619,21 +619,56 @@ resultsCommand
       if (options.json) {
         console.log(JSON.stringify(limited, null, 2));
       } else {
-        // Human-readable format
         if (limited.length === 0) {
           console.log('No execution history found');
           return;
         }
-        console.log('Execution History:');
-        console.log('');
+
+        // Table header
+        const header = [
+          'ID'.padEnd(10),
+          'Time'.padEnd(22),
+          'Avg Score'.padStart(12),
+          'Relative'.padStart(10),
+          'Log10'.padStart(8),
+          'Max Time'.padStart(10),
+          'Cases'.padStart(10),
+          'Comment',
+        ].join(' | ');
+        console.log(header);
+        console.log('-'.repeat(header.length));
+
         limited.forEach((exec: TestExecution) => {
-          const avgScore = exec.averageScore?.toFixed(2) || 'N/A';
-          const comment = exec.comment || '(no comment)';
-          console.log(`${exec.id}`);
-          console.log(`  Time: ${exec.startTime || 'N/A'}`);
-          console.log(`  Avg Score: ${avgScore}`);
-          console.log(`  Comment: ${comment}`);
-          console.log('');
+          const avgScore = exec.averageScore
+            ? Math.round(exec.averageScore).toLocaleString('en-US')
+            : '-';
+          const relative = exec.averageRelativeScore != null
+            ? `${(exec.averageRelativeScore * 100).toFixed(2)}%`
+            : '-';
+          const log10 = exec.averageScore && exec.averageScore > 0
+            ? Math.log10(exec.averageScore).toFixed(4)
+            : '-';
+          const maxTime = exec.maxExecutionTime != null
+            ? `${exec.maxExecutionTime.toFixed(0)}ms`
+            : '-';
+          const cases = exec.acceptedCount != null && exec.totalCount != null
+            ? `${exec.acceptedCount}/${exec.totalCount}`
+            : '-';
+          const time = exec.startTime
+            ? new Date(exec.startTime).toLocaleString()
+            : '-';
+          const comment = exec.comment || '';
+
+          console.log([
+            exec.id.padEnd(10),
+            time.padEnd(22),
+            avgScore.padStart(12),
+            relative.padStart(10),
+            log10.padStart(8),
+            maxTime.padStart(10),
+            cases.padStart(10),
+            comment,
+          ].join(' | '));
         });
       }
     } catch (error) {
@@ -647,6 +682,7 @@ resultsCommand
   .command('get <execution-id>')
   .description('Get detailed results for a specific execution')
   .option('-d, --directory <path>', 'Target directory (defaults to current directory)')
+  .option('--json', 'Output in JSON format', false)
   .action(async (executionId, options) => {
     const isRunning = await isServerRunning();
     if (!isRunning) {
@@ -656,16 +692,79 @@ resultsCommand
 
     try {
       const workspaceId = await getWorkspaceId(options.directory);
-      const response = await fetch(
-        `${SERVER_URL}/api/workspaces/${workspaceId}/executions/${executionId}`,
-      );
-      if (!response.ok) {
+
+      // Fetch execution summary and test cases in parallel
+      const [execResponse, casesResponse] = await Promise.all([
+        fetch(`${SERVER_URL}/api/workspaces/${workspaceId}/executions/${executionId}`),
+        fetch(`${SERVER_URL}/api/workspaces/${workspaceId}/executions/${executionId}/cases`),
+      ]);
+
+      if (!execResponse.ok) {
         console.error(`Failed to fetch execution result: ${executionId}`);
         process.exit(1);
       }
 
-      const data = await response.json();
-      console.log(JSON.stringify(data, null, 2));
+      const exec = await execResponse.json();
+      const cases = casesResponse.ok ? await casesResponse.json() : [];
+
+      if (options.json) {
+        console.log(JSON.stringify({ ...exec, cases }, null, 2));
+      } else {
+        // Summary
+        const time = exec.startTime ? new Date(exec.startTime).toLocaleString() : '-';
+        const avgScore = exec.averageScore
+          ? Math.round(exec.averageScore).toLocaleString('en-US')
+          : '-';
+        const relative = exec.averageRelativeScore != null
+          ? `${(exec.averageRelativeScore * 100).toFixed(2)}%`
+          : '-';
+        const log10 = exec.averageScore && exec.averageScore > 0
+          ? Math.log10(exec.averageScore).toFixed(4)
+          : '-';
+        const maxTime = exec.maxExecutionTime != null
+          ? `${exec.maxExecutionTime.toFixed(0)}ms`
+          : '-';
+        const accepted = exec.acceptedCount != null && exec.totalCount != null
+          ? `${exec.acceptedCount}/${exec.totalCount}`
+          : '-';
+
+        console.log(`ID               : ${exec.id}`);
+        console.log(`Status           : ${exec.status}`);
+        console.log(`Time             : ${time}`);
+        console.log(`Comment          : ${exec.comment || '-'}`);
+        console.log(`Average Score    : ${avgScore}`);
+        console.log(`Avg Relative     : ${relative}`);
+        console.log(`Avg Score (log10): ${log10}`);
+        console.log(`Max Exec Time    : ${maxTime}`);
+        console.log(`Accepted         : ${accepted}`);
+
+        // Test cases table
+        if (cases.length > 0) {
+          console.log('');
+          const caseHeader = [
+            'Seed'.padStart(6),
+            'Score'.padStart(10),
+            'Relative'.padStart(10),
+            'Time'.padStart(10),
+            'Status'.padEnd(10),
+          ].join(' | ');
+          console.log(caseHeader);
+          console.log('-'.repeat(caseHeader.length));
+
+          cases.forEach((c: { seed: number; score: number | null; relativeScore: number | null; executionTime: number | null; status: string }) => {
+            const score = c.score != null ? Math.round(c.score).toLocaleString('en-US') : '-';
+            const rel = c.relativeScore != null ? `${(c.relativeScore * 100).toFixed(2)}%` : '-';
+            const caseTime = c.executionTime != null ? `${Math.round(c.executionTime * 1000)}ms` : '-';
+            console.log([
+              String(c.seed).padStart(6),
+              score.padStart(10),
+              rel.padStart(10),
+              caseTime.padStart(10),
+              c.status.padEnd(10),
+            ].join(' | '));
+          });
+        }
+      }
     } catch (error) {
       console.error('Error fetching result:', error);
       process.exit(1);
