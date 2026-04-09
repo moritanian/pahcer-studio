@@ -22,9 +22,12 @@ import {
   DialogActions,
 } from '@mui/material';
 import type { TestExecution, TestExecutionStatus } from '../../../schemas/execution';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import DeleteIcon from '@mui/icons-material/Delete';
 import InfoIcon from '@mui/icons-material/Info';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import TimelapseIcon from '@mui/icons-material/Timelapse';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
@@ -88,6 +91,11 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
   }, [calcFitRows, executions]);
 
   const effectiveRowsPerPage = rowsPerPage === -1 ? autoRows : rowsPerPage;
+
+  // フィルター
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [testCountFilter, setTestCountFilter] = useState<string>('');
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [executionToDelete, setExecutionToDelete] = useState<TestExecution | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -263,7 +271,16 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
     return new Date(dateString).toLocaleString('ja-JP');
   };
 
-  const currentPageData = executions.slice(page * effectiveRowsPerPage, page * effectiveRowsPerPage + effectiveRowsPerPage);
+  const filteredExecutions = executions.filter((exec) => {
+    if (statusFilter !== 'all' && exec.status !== statusFilter) return false;
+    if (testCountFilter) {
+      const count = exec.totalCount ?? 0;
+      if (count !== parseInt(testCountFilter, 10)) return false;
+    }
+    return true;
+  });
+
+  const currentPageData = filteredExecutions.slice(page * effectiveRowsPerPage, page * effectiveRowsPerPage + effectiveRowsPerPage);
 
   if (loading) {
     return (
@@ -296,11 +313,34 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
       <Box
         sx={{
           display: 'flex',
-          justifyContent: 'flex-end',
-          p: 0.5,
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 1,
+          py: 0.5,
           borderBottom: '1px solid rgba(224, 224, 224, 1)',
         }}
       >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <FilterListIcon fontSize="small" sx={{ opacity: 0.6 }} />
+          <Select
+            size="small"
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+            sx={{ height: 28, fontSize: '0.8rem', minWidth: 100 }}
+          >
+            <MenuItem value="all">全ステータス</MenuItem>
+            <MenuItem value="COMPLETED">完了</MenuItem>
+            <MenuItem value="FAILED">失敗</MenuItem>
+            <MenuItem value="RUNNING">実行中</MenuItem>
+          </Select>
+          <TextField
+            size="small"
+            placeholder="テスト数"
+            value={testCountFilter}
+            onChange={(e) => { setTestCountFilter(e.target.value.replace(/[^0-9]/g, '')); setPage(0); }}
+            sx={{ width: 80, '& .MuiInputBase-root': { height: 28, fontSize: '0.8rem' } }}
+          />
+        </Box>
         <Tooltip title="更新">
           <IconButton size="small" onClick={handleRefresh} disabled={refreshing}>
             {refreshing ? <CircularProgress size={20} /> : <RefreshIcon fontSize="small" />}
@@ -437,12 +477,12 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
           10, 25, 50,
         ]}
         component="div"
-        count={executions.length}
+        count={filteredExecutions.length}
         rowsPerPage={rowsPerPage}
         page={page}
         onPageChange={(_, newPage) => {
           // auto 時は effectiveRowsPerPage でページ計算
-          const maxPage = Math.max(0, Math.ceil(executions.length / effectiveRowsPerPage) - 1);
+          const maxPage = Math.max(0, Math.ceil(filteredExecutions.length / effectiveRowsPerPage) - 1);
           setPage(Math.min(newPage, maxPage));
         }}
         onRowsPerPageChange={(e) => {
@@ -452,8 +492,8 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
         labelRowsPerPage="表示件数:"
         labelDisplayedRows={() => {
           const from = page * effectiveRowsPerPage + 1;
-          const to = Math.min((page + 1) * effectiveRowsPerPage, executions.length);
-          return `${from}-${to} / ${executions.length}`;
+          const to = Math.min((page + 1) * effectiveRowsPerPage, filteredExecutions.length);
+          return `${from}-${to} / ${filteredExecutions.length}`;
         }}
         sx={{ py: 0 }}
         backIconButtonProps={{
@@ -461,7 +501,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
           onClick: () => setPage(Math.max(0, page - 1)),
         }}
         nextIconButtonProps={{
-          disabled: (page + 1) * effectiveRowsPerPage >= executions.length,
+          disabled: (page + 1) * effectiveRowsPerPage >= filteredExecutions.length,
           onClick: () => setPage(page + 1),
         }}
       />
