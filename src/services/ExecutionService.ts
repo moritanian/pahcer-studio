@@ -9,6 +9,8 @@ import type {
 } from '../schemas/execution';
 import type { Workspace } from '../schemas/workspace';
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { IExecutionRepository } from '../repositories/IExecutionRepository';
 import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
 import type { ProcessManager } from '../infrastructure/ProcessManager';
@@ -282,7 +284,31 @@ export class ExecutionService extends EventEmitter {
       const parallel = lambdaConfig.parallel || 10;
       this.emitLog(executionId, 'info', `[Lambda] seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), parallel: ${parallel}, function: ${lambdaConfig.function_name}`);
 
-      const binaryPath = path.join(workspace.targetDirectory, 'a.out');
+      // Run compile_steps locally before Lambda invoke
+      const compileSteps = pahcerConfig.test?.compile_steps || [];
+      if (compileSteps.length > 0) {
+        const execFileAsync = promisify(execFile);
+        for (const step of compileSteps) {
+          const program = step.program;
+          const args = step.args || [];
+          const cwd = step.current_dir
+            ? path.resolve(workspace.targetDirectory, step.current_dir)
+            : workspace.targetDirectory;
+          try {
+            await execFileAsync(program, args, { cwd });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            throw new Error(`Compile step failed: ${program} ${args.join(' ')}\n${msg}`);
+          }
+        }
+      }
+
+      // Resolve binary path from first test_step's program
+      const testSteps = pahcerConfig.test?.test_steps || [];
+      if (testSteps.length === 0) {
+        throw new Error('No test_steps defined in pahcer_config.toml');
+      }
+      const binaryPath = path.resolve(workspace.targetDirectory, testSteps[0].program);
       this.emitLog(executionId, 'info', `Binary: ${binaryPath}`);
 
       // Load best scores and objective for relative score calculation
