@@ -225,6 +225,15 @@ phst run --lambda                  # Lambda で実行
 phst run --local                   # ローカルで実行
 ```
 
+### AWS 権限
+
+Lambda 実行に使用する AWS プロファイルには以下の権限が必要です：
+
+- `lambda:InvokeFunction`（対象: `ahc-tester` 関数）
+- `s3:PutObject` / `s3:GetObject`（対象: `ahc-tester-tools-*` バケット）
+
+CDK デプロイに使用したプロファイルであれば、これらの権限を持っているためそのまま使えます。
+
 ### 注意事項
 
 - Lambda の CPU（Xeon）はローカル PC より遅い場合があります（目安: Ryzen 5 の約 50%）
