@@ -165,11 +165,11 @@ phst --help              # ヘルプを表示
 
 ### 1. インフラのデプロイ
 
-`lambda_test/cdk` ディレクトリにサンプル CDK スタックがあります：
+`cdk/` ディレクトリに CDK スタックがあります：
 
 ```bash
-cd lambda_test/cdk
-npm install
+cd cdk
+yarn install
 npx cdk deploy
 ```
 
