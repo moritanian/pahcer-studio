@@ -262,7 +262,7 @@ export class ExecutionService extends EventEmitter {
     const startTime = new Date().toISOString();
     try {
       await this.updateExecutionStatus(executionId, 'RUNNING', workspace);
-      this.emitLog(executionId, 'info', `Lambda test execution started: ${executionId}`);
+      this.emitLog(executionId, 'info', `[Lambda] execution started: ${executionId}`);
 
       const lambdaConfig = pahcerConfig.aws_lambda;
       if (!lambdaConfig) {
@@ -279,7 +279,8 @@ export class ExecutionService extends EventEmitter {
         seeds.push(i);
       }
 
-      this.emitLog(executionId, 'info', `Seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), Parallel: ${lambdaConfig.parallel || 10}`);
+      const parallel = lambdaConfig.parallel || 10;
+      this.emitLog(executionId, 'info', `[Lambda] seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), parallel: ${parallel}, function: ${lambdaConfig.function_name}`);
 
       const binaryPath = path.join(workspace.targetDirectory, 'a.out');
       this.emitLog(executionId, 'info', `Binary: ${binaryPath}`);
