@@ -87,10 +87,10 @@ const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
       setLoading(true);
       setError(null);
 
-      // まず分析を実行
-      if (executions.length > 0) {
+      const executionIds = executions.map((e) => e.id!);
+      if (executionIds.length > 0) {
         const request: AnalysisRequest = {
-          executionIds: executions.map((e) => e.id!),
+          executionIds,
           featureFormat,
         };
 
@@ -104,12 +104,14 @@ const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
     }
   }, [featureFormat, executions, workspaceId]);
 
-  // 設定/実行一覧が揃ったタイミングで分析をトリガー
+  // 初回ロード時のみ分析をトリガー
+  const [initialAnalysisDone, setInitialAnalysisDone] = useState(false);
   useEffect(() => {
-    if (settingsLoaded && featureFormat && executions.length > 0) {
+    if (!initialAnalysisDone && settingsLoaded && featureFormat && executions.length > 0) {
+      setInitialAnalysisDone(true);
       fetchAnalysisData();
     }
-  }, [settingsLoaded, featureFormat, executions, fetchAnalysisData]);
+  }, [initialAnalysisDone, settingsLoaded, featureFormat, executions, fetchAnalysisData]);
 
   /* =====================================================
    * 2. テスト実行ステータス監視
@@ -128,8 +130,15 @@ const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
     }
   }, [workspaceId]);
 
+  const handleUpdate = useCallback((data: { executionId: string; execution: TestExecution }) => {
+    setExecutions((prev) =>
+      prev.map((e) => (e.id === data.executionId ? data.execution : e)),
+    );
+  }, []);
+
   useExecutionEvents({
     onStatusChange: handleStatusChange,
+    onUpdate: handleUpdate,
   });
 
   /* =====================================================

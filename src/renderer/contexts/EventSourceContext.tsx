@@ -19,12 +19,18 @@ export type ExecutionCompletedEventData = {
   execution: TestExecution;
 };
 
+export type ExecutionUpdateEventData = {
+  executionId: string;
+  execution: TestExecution;
+};
+
 // イベントタイプごとのハンドラー型マップ
 type EventHandlerMap = {
   'execution:status': (data: ExecutionStatusEventData) => void;
   'execution:progress': (data: TestExecution) => void;
   'execution:log': (data: ExecutionLogEventData) => void;
   'execution:completed': (data: ExecutionCompletedEventData) => void;
+  'execution:update': (data: ExecutionUpdateEventData) => void;
 };
 
 type EventType = keyof EventHandlerMap;
@@ -43,6 +49,7 @@ export const EventSourceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     'execution:progress': new Set<EventHandlerMap['execution:progress']>(),
     'execution:log': new Set<EventHandlerMap['execution:log']>(),
     'execution:completed': new Set<EventHandlerMap['execution:completed']>(),
+    'execution:update': new Set<EventHandlerMap['execution:update']>(),
   }));
 
   // EventSource の初期化
@@ -71,6 +78,11 @@ export const EventSourceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     es.addEventListener('execution:completed', (event) => {
       const data = JSON.parse(event.data);
       listeners['execution:completed'].forEach((handler) => handler(data));
+    });
+
+    es.addEventListener('execution:update', (event) => {
+      const data = JSON.parse(event.data);
+      listeners['execution:update'].forEach((handler) => handler(data));
     });
 
     es.onerror = (error) => {
@@ -121,6 +133,7 @@ interface UseExecutionEventsProps {
   onProgress?: EventHandlerMap['execution:progress'];
   onLog?: EventHandlerMap['execution:log'];
   onCompleted?: EventHandlerMap['execution:completed'];
+  onUpdate?: EventHandlerMap['execution:update'];
 }
 
 export const useExecutionEvents = ({
@@ -128,6 +141,7 @@ export const useExecutionEvents = ({
   onProgress,
   onLog,
   onCompleted,
+  onUpdate,
 }: UseExecutionEventsProps) => {
   const { addEventListener, removeEventListener } = useEventSource();
 
@@ -158,4 +172,11 @@ export const useExecutionEvents = ({
       return () => removeEventListener('execution:completed', onCompleted);
     }
   }, [addEventListener, removeEventListener, onCompleted]);
+
+  useEffect(() => {
+    if (onUpdate) {
+      addEventListener('execution:update', onUpdate);
+      return () => removeEventListener('execution:update', onUpdate);
+    }
+  }, [addEventListener, removeEventListener, onUpdate]);
 };

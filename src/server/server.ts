@@ -151,6 +151,8 @@ function setupRoutes(
         const executionRepository = container.getExecutionRepository();
         const updated = await executionRepository.update(executionId, updateData, workspace);
 
+        executionService.emit('execution:update', { executionId, execution: updated });
+
         res.json(updated);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -485,11 +487,13 @@ function setupRoutes(
     const progressHandler = (data: unknown) => sendEvent('execution:progress', data);
     const logHandler = (data: unknown) => sendEvent('execution:log', data);
     const completedHandler = (data: unknown) => sendEvent('execution:completed', data);
+    const updateHandler = (data: unknown) => sendEvent('execution:update', data);
 
     executionService.on('execution:status', statusHandler);
     executionService.on('execution:progress', progressHandler);
     executionService.on('execution:log', logHandler);
     executionService.on('execution:completed', completedHandler);
+    executionService.on('execution:update', updateHandler);
 
     // Cleanup on close
     req.on('close', () => {
@@ -497,6 +501,7 @@ function setupRoutes(
       executionService.off('execution:progress', progressHandler);
       executionService.off('execution:log', logHandler);
       executionService.off('execution:completed', completedHandler);
+      executionService.off('execution:update', updateHandler);
     });
   });
 
