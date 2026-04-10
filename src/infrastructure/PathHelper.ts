@@ -156,6 +156,13 @@ export class PathHelper {
     return path.join(workspaceDir, 'tools', 'out');
   }
 
+  /**
+   * error ディレクトリのパスを取得
+   */
+  static getErrorDirectory(workspaceDir: string): string {
+    return path.join(workspaceDir, 'tools', 'err');
+  }
+
 
   /**
    * json ディレクトリのパスを取得

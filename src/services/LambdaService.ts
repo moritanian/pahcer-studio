@@ -288,7 +288,13 @@ export class LambdaService {
       workspace.targetDirectory,
       executionId,
     );
-    await fs.mkdir(caseOutputsDir, { recursive: true });
+    const outDir = PathHelper.getOutputDirectory(workspace.targetDirectory);
+    const errDir = PathHelper.getErrorDirectory(workspace.targetDirectory);
+    await Promise.all([
+      fs.mkdir(caseOutputsDir, { recursive: true }),
+      fs.mkdir(outDir, { recursive: true }),
+      fs.mkdir(errDir, { recursive: true }),
+    ]);
 
     // Batch downloads to avoid S3 throttling (50 concurrent)
     const CONCURRENCY = 50;
@@ -307,14 +313,16 @@ export class LambdaService {
             const body = await response.Body?.transformToString();
             if (body) {
               const data = JSON.parse(body);
+              const seedStr = String(seed).padStart(4, '0');
               // output = solution's stdout (file redirected), stdout = all stdout including vis
               const content = data.output || data.stdout;
               if (content) {
-                const outputPath = path.join(
-                  caseOutputsDir,
-                  `${String(seed).padStart(4, '0')}.txt`,
-                );
+                const outputPath = path.join(caseOutputsDir, `${seedStr}.txt`);
                 await fs.writeFile(outputPath, content);
+                await fs.writeFile(path.join(outDir, `${seedStr}.txt`), content);
+              }
+              if (data.stderr) {
+                await fs.writeFile(path.join(errDir, `${seedStr}.txt`), data.stderr);
               }
             }
           } catch {
