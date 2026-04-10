@@ -450,7 +450,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                   {execution.maxExecutionTime ? `${execution.maxExecutionTime.toFixed(2)}ms` : '-'}
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>
-                  {execution.acceptedCount !== undefined && execution.totalCount !== undefined
+                  {execution.acceptedCount != null && execution.totalCount != null
                     ? `${execution.acceptedCount}/${execution.totalCount}`
                     : '-'}
                 </TableCell>

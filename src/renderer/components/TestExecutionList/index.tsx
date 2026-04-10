@@ -49,9 +49,20 @@ const TestExecutionList: React.FC<TestExecutionListProps> = ({ workspaceId }) =>
     fetchExecutions();
   }, [fetchExecutions]);
 
+  const handleProgress = useCallback((data: { executionId: string; acceptedCount: number; totalCount: number }) => {
+    setExecutions((prev) =>
+      prev.map((e) =>
+        e.id === data.executionId
+          ? { ...e, acceptedCount: data.acceptedCount, totalCount: data.totalCount }
+          : e,
+      ),
+    );
+  }, []);
+
   useExecutionEvents({
     onStatusChange: handleStatusChange,
     onUpdate: handleUpdate,
+    onProgress: handleProgress,
   });
 
   // executions が更新されたら selectedExecution も同期する（ステータス変更の反映）

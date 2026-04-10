@@ -1,5 +1,7 @@
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { Agent as HttpsAgent } from 'https';
 import { fromIni } from '@aws-sdk/credential-providers';
 import type { AwsCredentialIdentityProvider } from '@smithy/types';
 import * as fs from 'fs/promises';
@@ -17,12 +19,6 @@ interface LambdaInvokePayload {
   score_regex: string;
   tool_names: string[];
   execution_id: string;
-}
-
-interface LambdaResponse {
-  scores: Record<string, number | { error: string }>;
-  vcpus: number;
-  workers: number;
 }
 
 export class LambdaService {
@@ -47,11 +43,19 @@ export class LambdaService {
   }
 
   private getLambdaClient(config: AwsLambdaConfig): LambdaClient {
-    const key = this.getCacheKey(config);
+    const maxSockets = Math.max(50, config.parallel || 10);
+    const key = `${this.getCacheKey(config)}:${maxSockets}`;
     if (this.cachedLambdaClient?.key === key) {
       return this.cachedLambdaClient.client;
     }
-    const client = new LambdaClient(this.getClientOptions(config));
+    const client = new LambdaClient({
+      ...this.getClientOptions(config),
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: 30000,
+        requestTimeout: 300000,
+        httpsAgent: new HttpsAgent({ maxSockets, keepAlive: true }),
+      }),
+    });
     this.cachedLambdaClient = { key, client };
     return client;
   }
