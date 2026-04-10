@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import type { TestExecution } from '../../../../schemas/execution';
 import type { AnalysisResponse } from '../../../../schemas/analysis';
-import { useChartDataset, type ScoreGraphPoint, getExecDataKey } from '../hooks/useScoreGraphData';
+import { useChartDataset, type ScoreGraphPoint, getExecDataKey, getExecDisplayName } from '../hooks/useScoreGraphData';
 import { useInputFilter } from '../hooks/useGraphData';
 
 interface ScoreGraphProps {
@@ -193,7 +193,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
                           const mean = d[dataKey] as number | null | undefined;
                           const std = d[`${dataKey}_std`] as number | null | undefined;
                           if (mean === undefined || mean === null) return null;
-                          const name = execution?.comment || id;
+                          const name = getExecDisplayName(execution, id);
                           return (
                             <p key={id}>
                               {`${name}: ${mean.toFixed(2)}`}
@@ -213,7 +213,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
                           const dataKey = getExecDataKey(execution, id);
                           const v = d[dataKey];
                           if (v === undefined || v === null) return null;
-                          const name = execution?.comment || id;
+                          const name = getExecDisplayName(execution, id);
                           return (
                             <p key={id}>{`${name}: ${typeof v === 'number' ? v.toFixed(2) : v}`}</p>
                           );
@@ -247,7 +247,7 @@ const ScoreGraph: React.FC<ScoreGraphProps> = ({
             })}
             {selectedExecutionIds.map((execId, index) => {
               const execution = executions.find((e) => e.id === execId);
-              const execName = execution?.comment || execId;
+              const execName = getExecDisplayName(execution, execId);
               const dataKey = getExecDataKey(execution, execId);
 
               return (

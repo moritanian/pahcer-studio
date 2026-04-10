@@ -31,12 +31,22 @@ export interface ScoreGraphPoint {
 }
 
 /**
- * executionId とコメントからグラフのデータキーを計算
- * - 予約語（"x", "seeds", "count"）の場合はプレフィックスを付ける
+ * executionId からグラフのデータキーを計算
+ * IDベースで一意性を保証する
  */
-export function getExecDataKey(execution: TestExecution | undefined, execId: string): string {
-  const execName = execution?.comment || execId;
-  return ['x', 'seeds', 'count'].includes(execName) ? `${execId}_${execName}` : execName;
+export function getExecDataKey(_execution: TestExecution | undefined, execId: string): string {
+  return `exec_${execId}`;
+}
+
+/**
+ * 表示名を取得（Legend, Tooltip用）
+ */
+export function getExecDisplayName(execution: TestExecution | undefined, execId: string): string {
+  const shortId = execId.slice(0, 8);
+  if (execution?.comment) {
+    return `${execution.comment} (${shortId})`;
+  }
+  return shortId;
 }
 
 export function useChartDataset(
