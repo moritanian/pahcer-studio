@@ -557,6 +557,55 @@ program
     }
   });
 
+// Stop command
+program
+  .command('stop [directory]')
+  .description('Stop the currently running execution')
+  .action(async (directory) => {
+    const isRunning = await isServerRunning();
+    if (!isRunning) {
+      console.error('Error: Server is not running. Start it with "phst launch"');
+      process.exit(1);
+    }
+
+    try {
+      const workspace = await getWorkspace(directory);
+
+      // Find a running execution
+      const response = await fetch(`${SERVER_URL}/api/workspaces/${workspace.id}/executions`);
+      if (!response.ok) {
+        console.error('Failed to fetch executions');
+        process.exit(1);
+      }
+
+      const executions: TestExecution[] = await response.json();
+      const running = executions.find((e) => e.status === 'RUNNING');
+      if (!running) {
+        console.log('No running execution found');
+        process.exit(0);
+      }
+
+      console.log(`Stopping execution ${running.id}...`);
+      const stopResponse = await fetch(
+        `${SERVER_URL}/api/workspaces/${workspace.id}/executions/${running.id}/stop`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+
+      if (!stopResponse.ok) {
+        console.error('Failed to stop execution');
+        process.exit(1);
+      }
+
+      console.log('Execution stopped');
+    } catch (error) {
+      console.error('Error stopping execution:', error);
+      process.exit(1);
+    }
+  });
+
 // Results commands
 const resultsCommand = program.command('results').description('Manage execution results');
 
