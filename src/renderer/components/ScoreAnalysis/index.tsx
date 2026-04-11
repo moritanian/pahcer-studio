@@ -286,6 +286,7 @@ const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
       {/* 分析結果とグラフセクション */}
       {analysisResult && (
         <AnalysisChart
+          workspaceId={workspaceId}
           analysisResult={analysisResult}
           executions={executions}
           selectedExecutionIds={selectedExecutionIds}
