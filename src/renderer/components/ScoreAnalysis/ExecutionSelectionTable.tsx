@@ -92,6 +92,7 @@ const ExecutionSelectionTable: React.FC<ExecutionSelectionTableProps> = ({
                 <TableCell>コメント</TableCell>
                 <TableCell>開始時間</TableCell>
                 <TableCell>平均スコア</TableCell>
+                <TableCell>相対スコア</TableCell>
                 <TableCell>テスト数</TableCell>
               </TableRow>
             </TableHead>
@@ -119,6 +120,11 @@ const ExecutionSelectionTable: React.FC<ExecutionSelectionTableProps> = ({
                       : '-'}
                   </TableCell>
                   <TableCell>{execution.averageScore?.toFixed(2) || '-'}</TableCell>
+                  <TableCell>
+                    {execution.averageRelativeScore != null
+                      ? `${(execution.averageRelativeScore * 100).toFixed(2)}%`
+                      : '-'}
+                  </TableCell>
                   <TableCell>
                     {execution.acceptedCount || 0}/{execution.totalCount || 0}
                   </TableCell>
