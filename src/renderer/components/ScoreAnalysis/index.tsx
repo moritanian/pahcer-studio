@@ -104,14 +104,15 @@ const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
     }
   }, [featureFormat, executions, workspaceId]);
 
-  // 初回ロード時のみ分析をトリガー
-  const [initialAnalysisDone, setInitialAnalysisDone] = useState(false);
+  // 設定が揃い、executionリストが変化したら分析を再取得
+  const executionIdsKey = executions.map((e) => e.id).join(',');
+  const [lastFetchedKey, setLastFetchedKey] = useState('');
   useEffect(() => {
-    if (!initialAnalysisDone && settingsLoaded && featureFormat && executions.length > 0) {
-      setInitialAnalysisDone(true);
+    if (settingsLoaded && featureFormat && executions.length > 0 && executionIdsKey !== lastFetchedKey) {
+      setLastFetchedKey(executionIdsKey);
       fetchAnalysisData();
     }
-  }, [initialAnalysisDone, settingsLoaded, featureFormat, executions, fetchAnalysisData]);
+  }, [settingsLoaded, featureFormat, executions, executionIdsKey, lastFetchedKey, fetchAnalysisData]);
 
   /* =====================================================
    * 2. テスト実行ステータス監視
