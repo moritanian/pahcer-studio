@@ -88,7 +88,8 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
       clearTimeout(timer);
       observer.disconnect();
     };
-  }, [calcFitRows, executions]);
+    // executions の中身ではなく行数のみに依存（個別フィールドの更新で再計算しない）
+  }, [calcFitRows, executions.length]);
 
   const effectiveRowsPerPage = rowsPerPage === -1 ? autoRows : rowsPerPage;
 

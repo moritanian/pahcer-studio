@@ -58,9 +58,8 @@ export function evaluateExpression<T extends number | boolean>(
     }
 
     return defaultValue;
-  } catch (error) {
-    // mathjs評価エラーの場合はデフォルト値を返す
-    console.warn('Expression evaluation failed:', template, error);
+  } catch {
+    // mathjs評価エラーの場合はデフォルト値を返す（入力途中の不完全な式が頻出するため、ログは出さない）
     return defaultValue;
   }
 }
