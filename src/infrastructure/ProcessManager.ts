@@ -25,6 +25,10 @@ export class ProcessManager {
     this.resultsDir = path.join(process.cwd(), 'data', 'results');
   }
 
+  private processKey(workspaceId: string, executionId: string): string {
+    return `${workspaceId}:${executionId}`;
+  }
+
   /**
    * pacherツールを実行する
    */
@@ -106,7 +110,8 @@ export class ProcessManager {
           cwd: executionCwd,
         });
 
-        this.activeProcesses.set(executionId, child);
+        const pKey = this.processKey(workspace.id, executionId);
+        this.activeProcesses.set(pKey, child);
 
         let stdout = '';
         let stderr = '';
@@ -123,7 +128,7 @@ export class ProcessManager {
         });
 
         child.on('close', async (code) => {
-          this.activeProcesses.delete(executionId);
+          this.activeProcesses.delete(pKey);
           const executionTime = Date.now() - startTime;
           const success = code === 0;
 
@@ -147,7 +152,7 @@ export class ProcessManager {
         });
 
         child.on('error', async (error) => {
-          this.activeProcesses.delete(executionId);
+          this.activeProcesses.delete(pKey);
 
           resolve({
             success: false,
@@ -203,11 +208,12 @@ export class ProcessManager {
   /**
    * プロセスを強制終了する
    */
-  killProcess(executionId: string): boolean {
-    const process = this.activeProcesses.get(executionId);
+  killProcess(workspaceId: string, executionId: string): boolean {
+    const key = this.processKey(workspaceId, executionId);
+    const process = this.activeProcesses.get(key);
     if (process) {
       process.kill('SIGKILL');
-      this.activeProcesses.delete(executionId);
+      this.activeProcesses.delete(key);
       return true;
     }
     return false;

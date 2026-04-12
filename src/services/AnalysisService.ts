@@ -32,6 +32,7 @@ export class AnalysisService {
   private workspaceRepository: IWorkspaceRepository;
   private inputFeaturesCache: Map<string, InputFeature> = new Map();
   private bestScoresCache: Map<string, number> = new Map();
+  private cachedWorkspaceId: string | null = null;
 
   constructor(
     executionRepository: IExecutionRepository,
@@ -69,8 +70,12 @@ export class AnalysisService {
    * キャッシュが読み込まれているか確認し、未読み込みなら読み込む
    */
   private ensureCacheLoaded(workspace: Workspace): void {
-    if (this.inputFeaturesCache.size === 0 && this.bestScoresCache.size === 0) {
+    if (
+      this.cachedWorkspaceId !== workspace.id ||
+      (this.inputFeaturesCache.size === 0 && this.bestScoresCache.size === 0)
+    ) {
       this.reloadCache(workspace);
+      this.cachedWorkspaceId = workspace.id;
     }
   }
 

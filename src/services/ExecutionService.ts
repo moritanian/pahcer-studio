@@ -34,6 +34,11 @@ export class ExecutionService extends EventEmitter {
   private readonly executionOutDirs = new Map<string, string>();
   private readonly lambdaAbortControllers = new Map<string, AbortController>();
 
+  /** ワークスペースと実行IDから複合キーを生成 */
+  private execKey(workspaceId: string, executionId: string): string {
+    return `${workspaceId}:${executionId}`;
+  }
+
   constructor(
     private readonly executionRepository: IExecutionRepository,
     private readonly workspaceRepository: IWorkspaceRepository,
@@ -78,12 +83,12 @@ export class ExecutionService extends EventEmitter {
         'Failed to create temp config, but continuing execution...',
       );
     } else {
-      this.executionTempConfigs.set(executionId, tempConfigResult.tempPath);
+      this.executionTempConfigs.set(this.execKey(workspace.id, executionId), tempConfigResult.tempPath);
       // 一時ファイルを --setting-file として使うようリクエストを上書き
       request = { ...request, settingFile: tempConfigResult.tempPath };
       // out_dir が指定されていれば記録
       if (tempConfigResult.outDir) {
-        this.executionOutDirs.set(executionId, tempConfigResult.outDir);
+        this.executionOutDirs.set(this.execKey(workspace.id, executionId), tempConfigResult.outDir);
       }
       this.emitLog(
         executionId,
@@ -135,20 +140,21 @@ export class ExecutionService extends EventEmitter {
    */
   async stopExecution(executionId: string, workspace: Workspace): Promise<void> {
     // Try local process first
-    const killed = this.processManager.killProcess(executionId);
+    const killed = this.processManager.killProcess(workspace.id, executionId);
     if (killed) {
-      await this.cleanupTempConfig(executionId);
+      await this.cleanupTempConfig(workspace.id, executionId);
       await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
       this.runningExecutions.delete(workspace.id);
       return;
     }
 
     // Try Lambda abort
-    const controller = this.lambdaAbortControllers.get(executionId);
+    const key = this.execKey(workspace.id, executionId);
+    const controller = this.lambdaAbortControllers.get(key);
     if (controller) {
       controller.abort();
-      this.lambdaAbortControllers.delete(executionId);
-      await this.cleanupTempConfig(executionId);
+      this.lambdaAbortControllers.delete(key);
+      await this.cleanupTempConfig(workspace.id, executionId);
       await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
       this.runningExecutions.delete(workspace.id);
     }
@@ -194,7 +200,7 @@ export class ExecutionService extends EventEmitter {
    */
   async deleteExecution(executionId: string, workspace: Workspace): Promise<void> {
     // 稼働中かもしれないプロセスを停止しようと試みる
-    this.processManager.killProcess(executionId);
+    this.processManager.killProcess(workspace.id, executionId);
     // 実行中フラグをクリア
     this.runningExecutions.delete(workspace.id);
     // その後、関連ディレクトリを削除
@@ -207,13 +213,14 @@ export class ExecutionService extends EventEmitter {
   /**
    * 一時設定ファイルを削除する
    */
-  private async cleanupTempConfig(executionId: string): Promise<void> {
-    const tempPath = this.executionTempConfigs.get(executionId);
+  private async cleanupTempConfig(workspaceId: string, executionId: string): Promise<void> {
+    const key = this.execKey(workspaceId, executionId);
+    const tempPath = this.executionTempConfigs.get(key);
     if (tempPath) {
       await this.configService.cleanupTempConfig(tempPath);
-      this.executionTempConfigs.delete(executionId);
+      this.executionTempConfigs.delete(key);
     }
-    this.executionOutDirs.delete(executionId);
+    this.executionOutDirs.delete(key);
   }
 
   /**
@@ -228,7 +235,7 @@ export class ExecutionService extends EventEmitter {
       await this.updateExecutionStatus(executionId, 'RUNNING', workspace);
       this.emitLog(executionId, 'info', `pacher test execution started: ${executionId}`);
 
-      const outDir = this.executionOutDirs.get(executionId);
+      const outDir = this.executionOutDirs.get(this.execKey(workspace.id, executionId));
       const result = await this.processManager.executePacher(
         request,
         workspace,
@@ -241,7 +248,7 @@ export class ExecutionService extends EventEmitter {
       );
 
       // 一時設定ファイルを削除
-      await this.cleanupTempConfig(executionId);
+      await this.cleanupTempConfig(workspace.id, executionId);
 
       if (result.success) {
         await this.finalizeExecution(executionId, 'COMPLETED', workspace);
@@ -250,7 +257,7 @@ export class ExecutionService extends EventEmitter {
       }
     } catch (error) {
       // エラーが発生した場合も一時ファイルを削除
-      await this.cleanupTempConfig(executionId);
+      await this.cleanupTempConfig(workspace.id, executionId);
 
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.emitLog(executionId, 'error', `pacher execution error: ${errorMessage}`);
@@ -268,7 +275,8 @@ export class ExecutionService extends EventEmitter {
     workspace: Workspace,
   ): Promise<void> {
     const abortController = new AbortController();
-    this.lambdaAbortControllers.set(executionId, abortController);
+    const execKey = this.execKey(workspace.id, executionId);
+    this.lambdaAbortControllers.set(execKey, abortController);
     const startTime = new Date().toISOString();
     try {
       await this.updateExecutionStatus(executionId, 'RUNNING', workspace);
@@ -359,13 +367,13 @@ export class ExecutionService extends EventEmitter {
         (err) => console.error(`Failed to download case outputs: ${err}`),
       );
 
-      await this.cleanupTempConfig(executionId);
+      await this.cleanupTempConfig(workspace.id, executionId);
 
       this.resultProcessor.printSummary(allResults, state, log);
 
       await this.finalizeExecution(executionId, 'COMPLETED', workspace);
     } catch (error) {
-      await this.cleanupTempConfig(executionId);
+      await this.cleanupTempConfig(workspace.id, executionId);
       if (abortController.signal.aborted) {
         this.emitLog(executionId, 'info', 'Lambda execution cancelled');
         await this.finalizeExecution(executionId, 'CANCELLED', workspace);
@@ -375,7 +383,7 @@ export class ExecutionService extends EventEmitter {
         await this.finalizeExecution(executionId, 'FAILED', workspace);
       }
     } finally {
-      this.lambdaAbortControllers.delete(executionId);
+      this.lambdaAbortControllers.delete(execKey);
     }
   }
 
