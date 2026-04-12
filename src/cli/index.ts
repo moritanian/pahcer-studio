@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { EventSource } from 'eventsource';
@@ -193,29 +193,77 @@ async function startServer(
   process.exit(1);
 }
 
+// Find server PID by port using lsof/ss
+async function findPidByPort(port: number): Promise<number | null> {
+  try {
+    // Try lsof first (works on macOS and Linux)
+    try {
+      const output = execSync(`lsof -ti tcp:${port}`, { encoding: 'utf-8' }).trim();
+      if (output) {
+        const pid = parseInt(output.split('\n')[0]);
+        if (!isNaN(pid)) return pid;
+      }
+    } catch {
+      // lsof not available or no process found
+    }
+    // Fallback: ss (Linux)
+    try {
+      const output = execSync(`ss -tlnp sport = :${port}`, { encoding: 'utf-8' });
+      const match = output.match(/pid=(\d+)/);
+      if (match) return parseInt(match[1]);
+    } catch {
+      // ss not available
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 // Terminate the server
 async function terminateServer(): Promise<void> {
-  if (!fs.existsSync(PID_FILE)) {
-    console.log('No server PID file found. Server may not be running.');
+  let pid: number | null = null;
+
+  // 1. PIDファイルから取得
+  if (fs.existsSync(PID_FILE)) {
+    pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
+    // PIDが実在するか確認
+    try {
+      process.kill(pid, 0);
+    } catch {
+      console.log(`PID file references non-existent process (${pid}), checking port...`);
+      pid = null;
+    }
+  }
+
+  // 2. PIDファイルが無効なら、ポートからプロセスを探す
+  if (!pid) {
+    const port = parseInt(SERVER_URL.split(':').pop() || '3000');
+    pid = await findPidByPort(port);
+    if (pid) {
+      console.log(`Found server process by port (PID: ${pid})`);
+    }
+  }
+
+  if (!pid) {
+    console.log('No server process found.');
+    if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE);
     return;
   }
 
-  const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
-
   try {
-    // Try to kill the process
     process.kill(pid, 'SIGTERM');
     console.log(`Terminated server (PID: ${pid})`);
 
     // Wait a bit and verify it's stopped
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Check if still running
     try {
-      process.kill(pid, 0); // Signal 0 just checks if process exists
-      console.warn('Server may still be running. Try using task manager to force quit.');
+      process.kill(pid, 0);
+      // Still alive, force kill
+      console.warn('Server still running, sending SIGKILL...');
+      process.kill(pid, 'SIGKILL');
     } catch {
-      // Process doesn't exist anymore, good
       console.log('Server stopped successfully');
     }
   } catch (error: unknown) {
@@ -225,7 +273,6 @@ async function terminateServer(): Promise<void> {
       console.error('Error terminating server:', error);
     }
   } finally {
-    // Clean up PID file
     if (fs.existsSync(PID_FILE)) {
       fs.unlinkSync(PID_FILE);
     }
