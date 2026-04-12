@@ -117,14 +117,14 @@ export class ConfigService {
   /**
    * テスト実行用の一時設定ファイルを作成する。
    * 元の設定ファイルには一切触れず、seed範囲を変更した一時ファイルを生成する。
-   * @returns 一時ファイルのパス。失敗時はnull。
+   * @returns 一時ファイルのパスと out_dir。失敗時はnull。
    */
   async createTempConfigForTest(
     testCaseCount: number | null,
     startSeed: number | null,
     workspace: Workspace,
     settingFilePath?: string | null,
-  ): Promise<string | null> {
+  ): Promise<{ tempPath: string; outDir: string | null } | null> {
     try {
       const sourcePath = settingFilePath || this.getConfigPath(workspace);
 
@@ -155,7 +155,7 @@ export class ConfigService {
       const tomlContent = stringify(updatedConfig);
       await fs.writeFile(tempPath, tomlContent, 'utf-8');
 
-      return tempPath;
+      return { tempPath, outDir: currentConfig.test?.out_dir ?? null };
     } catch (error) {
       console.error(`Error creating temp config for test: ${error}`);
       return null;

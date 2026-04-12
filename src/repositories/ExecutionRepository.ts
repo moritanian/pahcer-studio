@@ -311,7 +311,7 @@ export class ExecutionRepository implements IExecutionRepository {
     return {
       ...execution,
       comment: execution.comment || summary.comment || '',
-      totalCount: stats.totalCount,
+      totalCount: execution.totalCount ?? stats.totalCount,
       acceptedCount: stats.acceptedCount,
       averageScore: stats.averageScore,
       averageRelativeScore: stats.averageRelativeScore,

@@ -31,6 +31,7 @@ export class ExecutionService extends EventEmitter {
   private readonly resultProcessor: ResultProcessor;
   private readonly runningExecutions = new Set<string>();
   private readonly executionTempConfigs = new Map<string, string>();
+  private readonly executionOutDirs = new Map<string, string>();
   private readonly lambdaAbortControllers = new Map<string, AbortController>();
 
   constructor(
@@ -63,27 +64,31 @@ export class ExecutionService extends EventEmitter {
 
     // 一時設定ファイルを作成（元のファイルには触れない）
     this.emitLog(executionId, 'info', 'Creating temp config for test execution...');
-    const tempConfigPath = await this.configService.createTempConfigForTest(
+    const tempConfigResult = await this.configService.createTempConfigForTest(
       request.testCaseCount,
       request.startSeed,
       workspace,
       request.settingFile,
     );
 
-    if (!tempConfigPath) {
+    if (!tempConfigResult) {
       this.emitLog(
         executionId,
         'warn',
         'Failed to create temp config, but continuing execution...',
       );
     } else {
-      this.executionTempConfigs.set(executionId, tempConfigPath);
+      this.executionTempConfigs.set(executionId, tempConfigResult.tempPath);
       // 一時ファイルを --setting-file として使うようリクエストを上書き
-      request = { ...request, settingFile: tempConfigPath };
+      request = { ...request, settingFile: tempConfigResult.tempPath };
+      // out_dir が指定されていれば記録
+      if (tempConfigResult.outDir) {
+        this.executionOutDirs.set(executionId, tempConfigResult.outDir);
+      }
       this.emitLog(
         executionId,
         'info',
-        `Temp config created: ${tempConfigPath}`,
+        `Temp config created: ${tempConfigResult.tempPath}`,
       );
     }
 
@@ -208,6 +213,7 @@ export class ExecutionService extends EventEmitter {
       await this.configService.cleanupTempConfig(tempPath);
       this.executionTempConfigs.delete(executionId);
     }
+    this.executionOutDirs.delete(executionId);
   }
 
   /**
@@ -222,6 +228,7 @@ export class ExecutionService extends EventEmitter {
       await this.updateExecutionStatus(executionId, 'RUNNING', workspace);
       this.emitLog(executionId, 'info', `pacher test execution started: ${executionId}`);
 
+      const outDir = this.executionOutDirs.get(executionId);
       const result = await this.processManager.executePacher(
         request,
         workspace,
@@ -230,6 +237,7 @@ export class ExecutionService extends EventEmitter {
           // ログの各行を個別にemitする
           this.logProcessOutput(executionId, log, 'info');
         },
+        outDir,
       );
 
       // 一時設定ファイルを削除

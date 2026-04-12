@@ -33,6 +33,7 @@ export class ProcessManager {
     workspace: Workspace,
     executionId: string,
     onLog: (log: string) => void,
+    outDir?: string | null,
   ): Promise<PacherExecutionResult> {
     const startTime = Date.now();
 
@@ -128,7 +129,7 @@ export class ProcessManager {
 
           if (success) {
             try {
-              await this.saveTestResults(executionId, executionCwd, workspace);
+              await this.saveTestResults(executionId, executionCwd, workspace, outDir);
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
               console.error(`[${executionId}] Failed to save results: ${message}`);
@@ -220,11 +221,17 @@ export class ProcessManager {
     executionId: string,
     workingDir: string,
     workspace: Workspace,
+    outDir?: string | null,
   ): Promise<void> {
     const targetDir = workspace.targetDirectory;
 
+    // out_dir に基づいてディレクトリを解決
+    const pahcerOutDir = outDir
+      ? path.resolve(workingDir, outDir)
+      : path.join(workingDir, 'pahcer');
+
     // 1. 最新のサマリーJSONをコピー
-    const jsonDir = PathHelper.getJsonDirectory(workingDir);
+    const jsonDir = path.join(pahcerOutDir, 'json');
     try {
       // コピー元のディレクトリが存在するか確認
       await fs.access(jsonDir);
@@ -256,17 +263,17 @@ export class ProcessManager {
     }
 
     // 2. ケースごとの出力ファイルをコピー
-    const outDir = PathHelper.getOutputDirectory(workingDir);
+    const caseOutDir = PathHelper.getOutputDirectory(workingDir);
     const caseOutputsDir = PathHelper.getCaseOutputsDirectory(targetDir, executionId);
     try {
       await fs.mkdir(caseOutputsDir, { recursive: true });
-      const outFiles = await fs.readdir(outDir);
+      const outFiles = await fs.readdir(caseOutDir);
       for (const file of outFiles) {
         if (file.endsWith('.txt')) {
           const caseNum = parseInt(path.basename(file, '.txt'));
           if (!isNaN(caseNum)) {
             const destName = `${String(caseNum).padStart(4, '0')}.txt`;
-            const srcPath = path.join(outDir, file);
+            const srcPath = path.join(caseOutDir, file);
             const destPath = path.join(caseOutputsDir, destName);
             await fs.copyFile(srcPath, destPath);
           }
