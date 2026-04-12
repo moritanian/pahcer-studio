@@ -299,7 +299,8 @@ export class ExecutionService extends EventEmitter {
       const parallel = lambdaConfig.parallel || 10;
 
       // Run compile_steps locally before Lambda invoke
-      const compileSteps = pahcerConfig.test?.compile_steps || [];
+      // aws_lambda.test.compile_steps があれば test.compile_steps を完全に置き換え
+      const compileSteps = lambdaConfig.test?.compile_steps ?? pahcerConfig.test?.compile_steps ?? [];
       if (compileSteps.length > 0) {
         const execFileAsync = promisify(execFile);
         for (const step of compileSteps) {
@@ -318,7 +319,8 @@ export class ExecutionService extends EventEmitter {
       }
 
       // Resolve binary path from first test_step's program
-      const testSteps = pahcerConfig.test?.test_steps || [];
+      // aws_lambda.test.test_steps があれば test.test_steps を完全に置き換え
+      const testSteps = lambdaConfig.test?.test_steps ?? pahcerConfig.test?.test_steps ?? [];
       if (testSteps.length === 0) {
         throw new Error('No test_steps defined in pahcer_config.toml');
       }

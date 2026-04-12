@@ -150,7 +150,7 @@ export class LambdaService {
       throw new Error('problem_name not found in pahcer_config.toml');
     }
 
-    const testSteps = pahcerConfig.test?.test_steps || [];
+    const testSteps = lambdaConfig.test?.test_steps ?? pahcerConfig.test?.test_steps ?? [];
     const scoreRegex =
       pahcerConfig.problem?.score_regex || '(?m)^\\s*Score\\s*=\\s*(?P<score>\\d+)\\s*$';
 
