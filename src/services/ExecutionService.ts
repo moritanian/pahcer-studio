@@ -109,7 +109,7 @@ export class ExecutionService extends EventEmitter {
     await this.executionRepository.save(initialExecution, workspace);
 
     // Lambda or Local execution
-    const pahcerConfig = await this.configService.getConfig(workspace);
+    const pahcerConfig = await this.configService.getConfig(workspace, request.settingFile);
     const useLambda = request.useLambda ?? pahcerConfig.aws_lambda?.default ?? false;
 
     if (useLambda) {

@@ -67,9 +67,9 @@ export class ConfigService {
   /**
    * pahcer_config.tomlの設定を取得
    */
-  async getConfig(workspace: Workspace): Promise<PahcerConfig> {
+  async getConfig(workspace: Workspace, settingFilePath?: string | null): Promise<PahcerConfig> {
     try {
-      const configPath = this.getConfigPath(workspace);
+      const configPath = settingFilePath || this.getConfigPath(workspace);
       const content = await fs.readFile(configPath, 'utf-8');
       return parse(content) as PahcerConfig;
     } catch (error) {

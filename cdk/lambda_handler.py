@@ -194,10 +194,20 @@ def run_single_test(seed, binary_path, test_steps, score_regex, tool_dir):
                     os.rename(gen_output, expected)
 
             # Symlink solution binary to work_dir
-            solution_link = os.path.join(work_dir, "a.out")
-            if os.path.exists(solution_link):
-                os.remove(solution_link)
-            os.symlink(binary_path, solution_link)
+            # Create symlinks for both "a.out" (default) and the actual program name
+            # from the first test step, so the binary can be found regardless of config
+            link_names = {"a.out"}
+            if test_steps:
+                prog = test_steps[0].get("program", "")
+                if prog.startswith("./"):
+                    prog = prog[2:]
+                if prog and "/" not in prog:
+                    link_names.add(prog)
+            for link_name in link_names:
+                solution_link = os.path.join(work_dir, link_name)
+                if os.path.exists(solution_link):
+                    os.remove(solution_link)
+                os.symlink(binary_path, solution_link)
 
             # Execute test steps
             all_stderr = ""
