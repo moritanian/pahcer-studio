@@ -130,29 +130,46 @@ export class ResultProcessor {
     const executionDir = path.join(resultsDir, executionId);
     await fs.mkdir(executionDir, { recursive: true });
 
-    const cases = results.map((r) => ({
-      seed: r.seed,
-      score: r.score,
-      execution_time: r.executionTime,
-      error_message: r.error,
-    }));
+    const bestScores = await this.configService.getBestScores(workspace);
+    const objective = await this.configService.getObjective(workspace);
 
-    const successCases = cases.filter((c) => c.score !== null && c.score > 0);
-    const totalScore = successCases.reduce((sum, c) => sum + c.score!, 0);
+    const cases = results.map((r) => {
+      const score = r.score != null && r.score > 0 ? r.score : 0;
+      let relativeScore = 0;
+      if (score > 0) {
+        const best = bestScores[r.seed];
+        // pahcer と同じ 0-100 スケール (best と同等で 100, best より良ければ 100 超)
+        relativeScore =
+          best !== undefined
+            ? this.configService.calculateRelativeScore(score, best, objective) * 100
+            : 100.0;
+      }
+      return {
+        seed: r.seed,
+        score,
+        relative_score: relativeScore,
+        execution_time: r.executionTime,
+        error_message: r.error ?? '',
+      };
+    });
+
+    const successCases = cases.filter((c) => c.score > 0);
+    const totalScore = successCases.reduce((sum, c) => sum + c.score, 0);
+    const totalScoreLog10 = successCases.reduce((sum, c) => sum + Math.log10(c.score), 0);
     const maxExecTime = cases.length > 0 ? Math.max(...cases.map((c) => c.execution_time)) : 0;
-    const totalRelativeScore = options?.state?.relativeCount
-      ? options.state.totalRelative / options.state.relativeCount
-      : 0;
-    const waSeeds = cases.filter((c) => c.score === null || c.score === 0).map((c) => c.seed);
+    const totalRelativeScore = cases.reduce((sum, c) => sum + c.relative_score, 0);
+    const waSeeds = cases.filter((c) => c.score === 0).map((c) => c.seed);
 
     const summary = {
       start_time: options?.startTime || new Date().toISOString(),
       case_count: results.length,
-      wa_seeds: waSeeds,
       total_score: totalScore,
+      total_score_log10: totalScoreLog10,
       total_relative_score: totalRelativeScore,
       max_execution_time: maxExecTime,
       comment: options?.comment || '',
+      tag_name: null,
+      wa_seeds: waSeeds,
       cases,
     };
 
