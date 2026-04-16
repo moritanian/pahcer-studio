@@ -52,7 +52,7 @@ export class ResultProcessor {
   ): void {
     for (const r of results) {
       state.completedCount++;
-      if (r.score !== null) {
+      if (r.score !== null && r.score > 0) {
         state.acceptedCount++;
         state.totalScore += r.score;
       }
@@ -95,7 +95,7 @@ export class ResultProcessor {
    * サマリーを出力
    */
   printSummary(results: SeedResult[], state: ProgressState, log: LogEmitter): void {
-    const successResults = results.filter((r) => r.score !== null);
+    const successResults = results.filter((r) => r.score !== null && r.score > 0);
     const finalAvg =
       successResults.length > 0
         ? successResults.reduce((sum, r) => sum + r.score!, 0) / successResults.length
@@ -137,16 +137,18 @@ export class ResultProcessor {
       error_message: r.error,
     }));
 
-    const successCases = cases.filter((c) => c.score !== null);
+    const successCases = cases.filter((c) => c.score !== null && c.score > 0);
     const totalScore = successCases.reduce((sum, c) => sum + c.score!, 0);
     const maxExecTime = cases.length > 0 ? Math.max(...cases.map((c) => c.execution_time)) : 0;
     const totalRelativeScore = options?.state?.relativeCount
       ? options.state.totalRelative / options.state.relativeCount
       : 0;
+    const waSeeds = cases.filter((c) => c.score === null || c.score === 0).map((c) => c.seed);
 
     const summary = {
       start_time: options?.startTime || new Date().toISOString(),
       case_count: results.length,
+      wa_seeds: waSeeds,
       total_score: totalScore,
       total_relative_score: totalRelativeScore,
       max_execution_time: maxExecTime,
@@ -170,7 +172,7 @@ export class ResultProcessor {
     let updated = false;
 
     for (const r of results) {
-      if (r.score === null) continue;
+      if (r.score === null || r.score === 0) continue;
       const current = bestScores[r.seed];
       if (current === undefined) {
         bestScores[r.seed] = r.score;

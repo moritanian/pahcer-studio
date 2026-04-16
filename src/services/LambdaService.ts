@@ -13,6 +13,7 @@ import type { SeedResult } from './ResultProcessor';
 
 interface LambdaInvokePayload {
   binary_base64: string;
+  uploaded_filename: string;
   seeds: number[];
   contest_id: string;
   test_steps: TestStep[];
@@ -136,6 +137,7 @@ export class LambdaService {
     workspace: Workspace,
     executionId: string,
     binaryPath: string,
+    uploadedFilename: string,
     seeds: number[],
     onProgress: (results: SeedResult[]) => void,
     abortSignal?: AbortSignal,
@@ -176,6 +178,7 @@ export class LambdaService {
     // Build base payload
     const basePayload: Omit<LambdaInvokePayload, 'seeds'> = {
       binary_base64: binaryBase64,
+      uploaded_filename: uploadedFilename,
       contest_id: contestId,
       test_steps: testSteps,
       score_regex: scoreRegex,

@@ -12,6 +12,7 @@ export interface AwsLambdaConfig {
   role_arn?: string;
   function_name: string;
   tools_bucket: string;
+  upload_file: string;
   test?: {
     compile_steps?: TestStep[];
     test_steps?: TestStep[];

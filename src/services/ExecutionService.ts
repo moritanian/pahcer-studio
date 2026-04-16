@@ -118,6 +118,16 @@ export class ExecutionService extends EventEmitter {
     const useLambda = request.useLambda ?? pahcerConfig.aws_lambda?.default ?? false;
 
     if (useLambda) {
+      // Validate upload_file synchronously so the error surfaces in the HTTP response
+      // (avoids the SSE race condition where fast-failing errors can be missed by the CLI)
+      if (!pahcerConfig.aws_lambda?.upload_file) {
+        this.runningExecutions.delete(workspace.id);
+        await this.cleanupTempConfig(workspace.id, executionId);
+        await this.finalizeExecution(executionId, 'FAILED', workspace);
+        throw new Error(
+          'aws_lambda.upload_file is not set. Specify the file to upload in [aws_lambda] of pahcer_config.toml, e.g. upload_file = "./target/release/xxx"',
+        );
+      }
       this.executeLambda(executionId, request, pahcerConfig, workspace).catch((error) => {
         console.error(`Lambda execution ${executionId} failed fatally:`, error);
         this.updateExecutionStatus(executionId, 'FAILED', workspace);
@@ -318,13 +328,14 @@ export class ExecutionService extends EventEmitter {
         }
       }
 
-      // Resolve binary path from first test_step's program
-      // aws_lambda.test.test_steps があれば test.test_steps を完全に置き換え
+      // upload_file は startExecution で検証済み
       const testSteps = lambdaConfig.test?.test_steps ?? pahcerConfig.test?.test_steps ?? [];
       if (testSteps.length === 0) {
         throw new Error('No test_steps defined in pahcer_config.toml');
       }
-      const binaryPath = path.resolve(workspace.targetDirectory, testSteps[0].program);
+      const uploadFile = lambdaConfig.upload_file;
+      const binaryPath = path.resolve(workspace.targetDirectory, uploadFile);
+      const uploadedFilename = path.basename(uploadFile);
       this.emitLog(executionId, 'info', `[Lambda] seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), parallel: ${parallel}, function: ${lambdaConfig.function_name}`);
 
       // Load best scores and objective for relative score calculation
@@ -342,12 +353,14 @@ export class ExecutionService extends EventEmitter {
         workspace,
         executionId,
         binaryPath,
+        uploadedFilename,
         seeds,
         (chunkResults) => {
           this.resultProcessor.printSeedResults(chunkResults, state, bestScores, objective, log);
           this.emit('execution:progress', {
             executionId,
-            acceptedCount: state.completedCount,
+            acceptedCount: state.acceptedCount,
+            completedCount: state.completedCount,
             totalCount: seeds.length,
           });
         },

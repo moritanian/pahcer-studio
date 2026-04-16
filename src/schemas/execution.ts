@@ -36,6 +36,7 @@ export const TestExecutionSchema = z.object({
   averageScore: z.number().optional().nullable(),
   averageRelativeScore: z.number().optional().nullable(),
   acceptedCount: z.number().int().optional().nullable(),
+  completedCount: z.number().int().optional().nullable(),
   totalCount: z.number().int().optional().nullable(),
   maxExecutionTime: z.number().optional().nullable(), // Milliseconds
 });

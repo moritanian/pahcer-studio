@@ -49,15 +49,28 @@ const TestExecutionList: React.FC<TestExecutionListProps> = ({ workspaceId }) =>
     fetchExecutions();
   }, [fetchExecutions]);
 
-  const handleProgress = useCallback((data: { executionId: string; acceptedCount: number; totalCount: number }) => {
-    setExecutions((prev) =>
-      prev.map((e) =>
-        e.id === data.executionId
-          ? { ...e, acceptedCount: data.acceptedCount, totalCount: data.totalCount }
-          : e,
-      ),
-    );
-  }, []);
+  const handleProgress = useCallback(
+    (data: {
+      executionId: string;
+      acceptedCount: number;
+      completedCount?: number;
+      totalCount: number;
+    }) => {
+      setExecutions((prev) =>
+        prev.map((e) =>
+          e.id === data.executionId
+            ? {
+                ...e,
+                acceptedCount: data.acceptedCount,
+                completedCount: data.completedCount ?? e.completedCount,
+                totalCount: data.totalCount,
+              }
+            : e,
+        ),
+      );
+    },
+    [],
+  );
 
   useExecutionEvents({
     onStatusChange: handleStatusChange,
