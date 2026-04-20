@@ -71,13 +71,16 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
 
     const rowHeight = firstRow?.getBoundingClientRect().height || 33;
     const headerHeight = thead?.getBoundingClientRect().height || 33;
-    const available = container.clientHeight - headerHeight;
+    // 境界での ±1 振動を抑制するため小さな余白を引く
+    const available = container.clientHeight - headerHeight - 4;
     return Math.max(1, Math.floor(available / rowHeight));
   }, []);
 
   useEffect(() => {
     const updateAutoRows = () => {
-      setAutoRows(calcFitRows());
+      const next = calcFitRows();
+      // 差が 1 行以内ならフィードバック振動とみなして更新しない
+      setAutoRows((prev) => (Math.abs(next - prev) <= 1 ? prev : next));
     };
     const timer = setTimeout(updateAutoRows, 100);
     const observer = new ResizeObserver(updateAutoRows);
@@ -117,6 +120,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
       key: 'comment',
       label: 'コメント',
       minWidth: 120,
+      maxWidth: 300,
     },
     {
       key: 'startTime',
@@ -349,7 +353,13 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
         </Tooltip>
       </Box>
       <TableContainer ref={tableContainerRef} sx={{ flexGrow: 1, minHeight: 0, overflow: 'auto' }}>
-        <Table stickyHeader size="small" padding="none">
+        <Table
+          stickyHeader
+          size="small"
+          padding="none"
+          // 行高を内容に依存させない (折返しによる rowHeight 変動で autoRows が振動するのを防ぐ)
+          sx={{ '& tbody td': { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }}
+        >
           <TableHead>
             <TableRow sx={{ backgroundColor: 'rgba(0, 0, 0, 0.04)' }}>
               {columnDefinitions.map((column) => (
@@ -360,6 +370,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                     py: 0.5,
                     px: 1,
                     minWidth: column.minWidth,
+                    ...(('maxWidth' in column) && { maxWidth: column.maxWidth }),
                   }}
                 >
                   {column.tooltip ? (
@@ -393,7 +404,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                   {execution.id || '-'}
                 </TableCell>
                 <TableCell
-                  sx={{ py: 0.5, px: 1, cursor: 'text' }}
+                  sx={{ py: 0.5, px: 1, cursor: 'text', maxWidth: 300 }}
                   onDoubleClick={() => handleCommentDoubleClick(execution)}
                 >
                   {editingExecutionId === execution.id ? (
@@ -419,7 +430,11 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                       }}
                     />
                   ) : (
-                    execution.comment || '-'
+                    <Tooltip title={execution.comment || ''} arrow enterDelay={500} placement="top-start">
+                      <Box component="span" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {execution.comment || '-'}
+                      </Box>
+                    </Tooltip>
                   )}
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>{formatDate(execution.startTime)}</TableCell>
@@ -476,7 +491,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
       </TableContainer>
       <TablePagination
         rowsPerPageOptions={[
-          { value: -1, label: `auto (${autoRows})` },
+          { value: -1, label: 'auto' },
           10, 25, 50,
         ]}
         component="div"
@@ -498,7 +513,12 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
           const to = Math.min((page + 1) * effectiveRowsPerPage, filteredExecutions.length);
           return `${from}-${to} / ${filteredExecutions.length}`;
         }}
-        sx={{ py: 0 }}
+        sx={{
+          py: 0,
+          flexShrink: 0,
+          // ツールバーを折返させない (折返しで高さが変わると autoRows 再計算ループの原因になる)
+          '& .MuiToolbar-root': { flexWrap: 'nowrap' },
+        }}
         backIconButtonProps={{
           disabled: page === 0,
           onClick: () => setPage(Math.max(0, page - 1)),
