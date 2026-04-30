@@ -2,9 +2,15 @@ import express from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
+import { Command } from 'commander';
 import { createServer as createViteServer } from 'vite';
 import { DIContainer } from '../infrastructure/DIContainer';
 import { PathHelper } from '../infrastructure/PathHelper';
+import {
+  clearInstance,
+  readInstance,
+  writeInstance,
+} from '../infrastructure/InstanceRegistry';
 import {
   TestExecutionRequest,
   TestExecutionRequestSchema,
@@ -34,9 +40,50 @@ declare global {
   }
 }
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const HOST = process.env.HOST || '127.0.0.1';
 const isDev = process.env.NODE_ENV !== 'production';
+
+interface ServerCliArgs {
+  host: string;
+  port: number;
+}
+
+function parseServerArgs(argv: string[]): ServerCliArgs {
+  const program = new Command();
+  program
+    .name('pahcer-studio-server')
+    .option(
+      '--host <host>',
+      'Bind address. Non-loopback values (e.g., 0.0.0.0) expose the API ' +
+        'without auth and allow arbitrary command execution; only use on a trusted network.',
+      '127.0.0.1',
+    )
+    .option(
+      '--port <port>',
+      'Listen port',
+      (v) => {
+        const n = parseInt(v, 10);
+        if (Number.isNaN(n)) {
+          console.error(`Invalid --port value: ${v}`);
+          process.exit(1);
+        }
+        return n;
+      },
+      3000,
+    )
+    .allowExcessArguments(false)
+    .parse(argv, { from: 'user' });
+
+  const opts = program.opts<{ host: string; port: number }>();
+  return { host: opts.host, port: opts.port };
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === '127.0.0.1' || host === '::1' || host === 'localhost';
+}
+
+const cliArgs = parseServerArgs(process.argv.slice(2));
+const HOST = cliArgs.host;
+const PORT = cliArgs.port;
 
 let vite: Awaited<ReturnType<typeof createViteServer>> | undefined;
 
@@ -608,12 +655,53 @@ async function setupVite(app: express.Application) {
 
 // Start Server
 async function start() {
+  // Single-instance enforcement: refuse to start if another pahcer-studio
+  // server is already running on this machine.
+  const existing = readInstance();
+  if (existing && existing.pid !== process.pid) {
+    console.error(
+      `pahcer-studio is already running (pid=${existing.pid}, ` +
+        `http://${existing.host}:${existing.port}). ` +
+        `Stop it with 'phst terminate' first, or use 'phst launch -f' to force restart.`,
+    );
+    process.exit(1);
+  }
+
+  if (!isLoopbackHost(HOST)) {
+    console.warn(
+      `WARNING: pahcer-studio is bound to ${HOST}, which is reachable from outside this machine. ` +
+        `The API has no authentication and can run arbitrary commands. ` +
+        `Only do this on a trusted network.`,
+    );
+  }
+
   const app = createApp();
 
   await setupVite(app);
-  app.listen(PORT, HOST, () => {
+
+  const server = app.listen(PORT, HOST, () => {
+    writeInstance({
+      pid: process.pid,
+      port: PORT,
+      host: HOST,
+      startedAt: new Date().toISOString(),
+    });
     console.log(`Server running on http://${HOST}:${PORT}`);
   });
+
+  server.on('error', (err) => {
+    console.error('Server error:', err);
+    clearInstance();
+    process.exit(1);
+  });
+
+  const cleanup = () => {
+    clearInstance();
+    process.exit(0);
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+  process.on('exit', () => clearInstance());
 }
 
 // 本番環境またはCLIから起動された場合のみサーバーを起動

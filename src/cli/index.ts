@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { execSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { EventSource } from 'eventsource';
 import packageJson from '../../package.json';
 import { PathHelper } from '../infrastructure/PathHelper';
+import {
+  clearInstance,
+  readInstance,
+} from '../infrastructure/InstanceRegistry';
 import type { Workspace } from '../schemas/workspace';
 import type { TestExecution } from '../schemas/execution';
 
@@ -60,15 +64,29 @@ async function openBrowser(url: string): Promise<void> {
 }
 
 const program = new Command();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const HOST = process.env.HOST || '127.0.0.1';
-const SERVER_URL = `http://${HOST}:${PORT}`;
+const DEFAULT_PORT = 3000;
+let SERVER_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
 
-// PID file path (in user's home directory or temp)
-const PID_FILE = path.join(process.env.TEMP || process.env.TMPDIR || '/tmp', 'pahcer-studio.pid');
+function setServerPort(port: number): void {
+  SERVER_URL = `http://127.0.0.1:${port}`;
+}
 
-// Check if server is running
+// Discover the running server's port from the instance registry and point
+// SERVER_URL at it. Runs before every command's action so the CLI always
+// targets whichever port the live server happens to use.
+program.hook('preAction', () => {
+  const info = readInstance();
+  if (info) {
+    setServerPort(info.port);
+  }
+});
+
+// Check if server is running. Combines registry presence with an HTTP probe
+// so a stale registry (server crashed without cleanup) is treated as down.
 async function isServerRunning(): Promise<boolean> {
+  const info = readInstance();
+  if (!info) return false;
+  setServerPort(info.port);
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1000);
@@ -84,6 +102,8 @@ async function isServerRunning(): Promise<boolean> {
 async function startServer(
   shouldOpenBrowser: boolean = true,
   force: boolean = false,
+  host?: string,
+  port?: number,
 ): Promise<void> {
   const isRunning = await isServerRunning();
 
@@ -94,7 +114,7 @@ async function startServer(
       // Wait a bit for the server to fully terminate
       await new Promise((resolve) => setTimeout(resolve, 2000));
     } else {
-      console.log('Server is already running');
+      console.log(`Server is already running at ${SERVER_URL}`);
       if (shouldOpenBrowser) {
         console.log(`Opening browser at ${SERVER_URL}`);
         await openBrowser(SERVER_URL);
@@ -102,6 +122,11 @@ async function startServer(
       return;
     }
   }
+
+  // Point the CLI at the port we are about to spawn on so subsequent
+  // isServerRunning() polls and the post-launch browser-open hit the right URL.
+  const targetPort = port ?? DEFAULT_PORT;
+  setServerPort(targetPort);
 
   console.log('Starting server...');
 
@@ -135,7 +160,11 @@ async function startServer(
     process.exit(1);
   }
 
-  const serverProcess = spawn('node', [serverPath], {
+  const serverArgs: string[] = [serverPath];
+  if (host) serverArgs.push('--host', host);
+  if (port) serverArgs.push('--port', String(port));
+
+  const serverProcess = spawn('node', serverArgs, {
     cwd: rootDir,
     stdio: 'ignore',
     detached: true,
@@ -149,13 +178,11 @@ async function startServer(
     process.exit(1);
   });
 
-  // Detach the child process so it continues running after CLI exits
+  // Detach the child process so it continues running after CLI exits.
+  // The server itself writes the instance registry once it has bound the port.
   serverProcess.unref();
 
-  // Save PID to file
-  if (serverProcess.pid) {
-    fs.writeFileSync(PID_FILE, serverProcess.pid.toString());
-  } else {
+  if (!serverProcess.pid) {
     console.error('Failed to get server process PID');
     process.exit(1);
   }
@@ -167,7 +194,8 @@ async function startServer(
   while (attempts < maxAttempts) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     if (await isServerRunning()) {
-      console.log(`Server started at ${SERVER_URL}`);
+      const boundLabel = host ? `bound to ${host}, reachable at ${SERVER_URL}` : SERVER_URL;
+      console.log(`Server started (${boundLabel})`);
       if (shouldOpenBrowser) {
         console.log('Opening browser...');
         await openBrowser(SERVER_URL);
@@ -177,92 +205,35 @@ async function startServer(
     attempts++;
   }
 
-  console.error('Error: Server failed to start within 30 seconds');
-  console.error('Check if port 3000 is already in use or check server logs');
+  console.error(`Error: Server failed to start within 30 seconds`);
+  console.error(`Check if port ${targetPort} is already in use or check server logs`);
   try {
-    if (serverProcess.pid) {
-      process.kill(serverProcess.pid, 'SIGTERM');
-    }
-  } catch (err) {
+    process.kill(serverProcess.pid, 'SIGTERM');
+  } catch {
     // Process may have already exited
-  }
-  // Clean up PID file
-  if (fs.existsSync(PID_FILE)) {
-    fs.unlinkSync(PID_FILE);
   }
   process.exit(1);
 }
 
-// Find server PID by port using lsof/ss
-async function findPidByPort(port: number): Promise<number | null> {
-  try {
-    // Try lsof first (works on macOS and Linux)
-    try {
-      const output = execSync(`lsof -ti tcp:${port}`, { encoding: 'utf-8' }).trim();
-      if (output) {
-        const pid = parseInt(output.split('\n')[0]);
-        if (!isNaN(pid)) return pid;
-      }
-    } catch {
-      // lsof not available or no process found
-    }
-    // Fallback: ss (Linux)
-    try {
-      const output = execSync(`ss -tlnp sport = :${port}`, { encoding: 'utf-8' });
-      const match = output.match(/pid=(\d+)/);
-      if (match) return parseInt(match[1]);
-    } catch {
-      // ss not available
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-// Terminate the server
+// Terminate the server using the instance registry as the source of truth.
 async function terminateServer(): Promise<void> {
-  let pid: number | null = null;
-
-  // 1. PIDファイルから取得
-  if (fs.existsSync(PID_FILE)) {
-    pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim());
-    // PIDが実在するか確認
-    try {
-      process.kill(pid, 0);
-    } catch {
-      console.log(`PID file references non-existent process (${pid}), checking port...`);
-      pid = null;
-    }
-  }
-
-  // 2. PIDファイルが無効なら、ポートからプロセスを探す
-  if (!pid) {
-    const port = parseInt(SERVER_URL.split(':').pop() || '3000');
-    pid = await findPidByPort(port);
-    if (pid) {
-      console.log(`Found server process by port (PID: ${pid})`);
-    }
-  }
-
-  if (!pid) {
+  const info = readInstance();
+  if (!info) {
     console.log('No server process found.');
-    if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE);
     return;
   }
 
   try {
-    process.kill(pid, 'SIGTERM');
-    console.log(`Terminated server (PID: ${pid})`);
+    process.kill(info.pid, 'SIGTERM');
+    console.log(`Terminated server (PID: ${info.pid})`);
 
-    // Wait a bit and verify it's stopped
+    // Give the server a moment to clean up the registry itself.
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     try {
-      process.kill(pid, 0);
-      // Still alive, force kill
+      process.kill(info.pid, 0);
       console.warn('Server still running, sending SIGKILL...');
-      process.kill(pid, 'SIGKILL');
+      process.kill(info.pid, 'SIGKILL');
     } catch {
       console.log('Server stopped successfully');
     }
@@ -273,9 +244,8 @@ async function terminateServer(): Promise<void> {
       console.error('Error terminating server:', error);
     }
   } finally {
-    if (fs.existsSync(PID_FILE)) {
-      fs.unlinkSync(PID_FILE);
-    }
+    // Defensive: ensure registry is gone even if server didn't clean up.
+    clearInstance();
   }
 }
 
@@ -285,9 +255,26 @@ program
   .description('Launch the pahcer-studio server in background and open browser')
   .option('--no-browser', 'Do not open browser automatically')
   .option('-f, --force', 'Force restart server if already running', false)
+  .option(
+    '--host <host>',
+    'Bind address for the server. Non-loopback values (e.g., 0.0.0.0) expose the API ' +
+      'without auth and allow arbitrary command execution; only use on a trusted network.',
+  )
+  .option(
+    '-p, --port <port>',
+    'Port to listen on (default: 3000)',
+    (v) => {
+      const n = parseInt(v, 10);
+      if (Number.isNaN(n)) {
+        console.error(`Invalid --port value: ${v}`);
+        process.exit(1);
+      }
+      return n;
+    },
+  )
   .action(async (options) => {
     try {
-      await startServer(options.browser !== false, options.force);
+      await startServer(options.browser !== false, options.force, options.host, options.port);
       // Server is running in background, exit the CLI
       process.exit(0);
     } catch (error) {
