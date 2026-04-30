@@ -6,10 +6,7 @@ import * as fs from 'fs';
 import { EventSource } from 'eventsource';
 import packageJson from '../../package.json';
 import { PathHelper } from '../infrastructure/PathHelper';
-import {
-  clearInstance,
-  readInstance,
-} from '../infrastructure/InstanceRegistry';
+import { clearInstance, readInstance } from '../infrastructure/InstanceRegistry';
 import type { Workspace } from '../schemas/workspace';
 import type { TestExecution } from '../schemas/execution';
 

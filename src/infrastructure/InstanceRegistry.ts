@@ -1,6 +1,6 @@
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
+import { getUserDataDir } from './userPaths';
 
 export interface InstanceInfo {
   pid: number;
@@ -10,7 +10,7 @@ export interface InstanceInfo {
 }
 
 export function getInstanceRegistryPath(): string {
-  return path.join(os.homedir(), '.pahcer-studio', 'instance.json');
+  return path.join(getUserDataDir(), 'instance.json');
 }
 
 function isProcessAlive(pid: number): boolean {

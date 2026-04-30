@@ -6,11 +6,8 @@ import { Command } from 'commander';
 import { createServer as createViteServer } from 'vite';
 import { DIContainer } from '../infrastructure/DIContainer';
 import { PathHelper } from '../infrastructure/PathHelper';
-import {
-  clearInstance,
-  readInstance,
-  writeInstance,
-} from '../infrastructure/InstanceRegistry';
+import { clearInstance, readInstance, writeInstance } from '../infrastructure/InstanceRegistry';
+import { getUserDataDir } from '../infrastructure/userPaths';
 import {
   TestExecutionRequest,
   TestExecutionRequestSchema,
@@ -88,9 +85,8 @@ const PORT = cliArgs.port;
 let vite: Awaited<ReturnType<typeof createViteServer>> | undefined;
 
 // Initialize DI Container
-// Note: In a real server environment, we might need a different way to determine userData path
-// For now, we'll use a local directory for settings
-const userDataDir = path.join(process.cwd(), 'data', 'settings');
+// 永続化先は ~/.pahcer-studio/ に一元化 (workspaces.json / instance.json / settings.json)
+const userDataDir = getUserDataDir();
 fsPromises.mkdir(userDataDir, { recursive: true }).catch(console.error);
 
 const settingsPath = PathHelper.getAppSettingsPath(userDataDir);

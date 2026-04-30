@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getUserDataDir } from '../infrastructure/userPaths';
 import type { Workspace } from '../schemas/workspace';
 import type { IWorkspaceRepository } from './IWorkspaceRepository';
 
@@ -18,8 +19,8 @@ export class WorkspaceRepository implements IWorkspaceRepository {
    * @param enablePersistence 永続化を有効にするか（テスト時はfalse推奨）
    */
   constructor(storageDir?: string, enablePersistence: boolean = true) {
-    // ストレージディレクトリのデフォルトは [app dir]/data/settings
-    this.storageDir = storageDir || path.join(process.cwd(), 'data', 'settings');
+    // 永続化先は ~/.pahcer-studio/ に集約する (instance.json などと同居)
+    this.storageDir = storageDir || getUserDataDir();
     this.storageFile = path.join(this.storageDir, 'workspaces.json');
     this.enablePersistence = enablePersistence;
 
