@@ -32,5 +32,12 @@
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "@typescript-eslint/no-explicit-any": "warn"
   },
-  "ignorePatterns": ["dist/**", "node_modules/**", "public/**", "vite.config.ts", "data/**"]
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    "public/**",
+    "vite.config.ts",
+    "data/**",
+    "cdk/**"
+  ]
 }

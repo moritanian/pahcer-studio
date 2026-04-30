@@ -86,7 +86,7 @@ const TestExecutionList: React.FC<TestExecutionListProps> = ({ workspaceId }) =>
         setSelectedExecution(updated);
       }
     }
-  }, [executions]);
+  }, [executions, selectedExecution]);
 
   // テスト実行選択ハンドラー
   const handleExecutionSelect = (execution: TestExecution) => {
