@@ -13,5 +13,11 @@
         ]
       }
     ]
+  },
+  "sandbox": {
+    "excludedCommands": [
+      "phst",
+      "phst *"
+    ]
   }
 }
