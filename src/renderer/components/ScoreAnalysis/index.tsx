@@ -108,11 +108,23 @@ const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
   const executionIdsKey = executions.map((e) => e.id).join(',');
   const [lastFetchedKey, setLastFetchedKey] = useState('');
   useEffect(() => {
-    if (settingsLoaded && featureFormat && executions.length > 0 && executionIdsKey !== lastFetchedKey) {
+    if (
+      settingsLoaded &&
+      featureFormat &&
+      executions.length > 0 &&
+      executionIdsKey !== lastFetchedKey
+    ) {
       setLastFetchedKey(executionIdsKey);
       fetchAnalysisData();
     }
-  }, [settingsLoaded, featureFormat, executions, executionIdsKey, lastFetchedKey, fetchAnalysisData]);
+  }, [
+    settingsLoaded,
+    featureFormat,
+    executions,
+    executionIdsKey,
+    lastFetchedKey,
+    fetchAnalysisData,
+  ]);
 
   /* =====================================================
    * 2. テスト実行ステータス監視
@@ -132,9 +144,7 @@ const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
   }, [workspaceId]);
 
   const handleUpdate = useCallback((data: { executionId: string; execution: TestExecution }) => {
-    setExecutions((prev) =>
-      prev.map((e) => (e.id === data.executionId ? data.execution : e)),
-    );
+    setExecutions((prev) => prev.map((e) => (e.id === data.executionId ? data.execution : e)));
   }, []);
 
   useExecutionEvents({

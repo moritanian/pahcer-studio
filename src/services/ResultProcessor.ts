@@ -61,7 +61,8 @@ export class ResultProcessor {
       let rel: number | null = null;
       if (r.score !== null && r.score > 0) {
         if (bestScores[r.seed] !== undefined) {
-          rel = this.configService.calculateRelativeScore(r.score, bestScores[r.seed], objective) * 100;
+          rel =
+            this.configService.calculateRelativeScore(r.score, bestScores[r.seed], objective) * 100;
         } else {
           rel = 100.0;
         }
@@ -75,8 +76,7 @@ export class ResultProcessor {
 
       const avgScore = state.acceptedCount > 0 ? state.totalScore / state.acceptedCount : 0;
       const avgRelative = state.relativeCount > 0 ? state.totalRelative / state.relativeCount : 0;
-      const avgRelStr =
-        state.relativeCount > 0 ? avgRelative.toFixed(3).padStart(8) : '       -';
+      const avgRelStr = state.relativeCount > 0 ? avgRelative.toFixed(3).padStart(8) : '       -';
       const scoreStr = r.score !== null ? this.formatNumber(r.score) : 'ERROR';
       const avgStr = avgScore.toFixed(2);
       const timeMs = Math.round(r.executionTime * 1000);
@@ -102,9 +102,7 @@ export class ResultProcessor {
         : 0;
     const finalRelAvg = state.relativeCount > 0 ? state.totalRelative / state.relativeCount : 0;
     const maxExecTime =
-      results.length > 0
-        ? Math.max(...results.map((r) => Math.round(r.executionTime * 1000)))
-        : 0;
+      results.length > 0 ? Math.max(...results.map((r) => Math.round(r.executionTime * 1000))) : 0;
 
     log('info', `Average Score          : ${finalAvg.toFixed(2)}`);
     log('info', `Average Relative Score : ${finalRelAvg.toFixed(3)}`);

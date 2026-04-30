@@ -14,7 +14,12 @@ import {
 } from 'recharts';
 import type { TestExecution } from '../../../../schemas/execution';
 import type { AnalysisResponse } from '../../../../schemas/analysis';
-import { useChartDataset, type ScoreGraphPoint, getExecDataKey, getExecDisplayName } from '../hooks/useScoreGraphData';
+import {
+  useChartDataset,
+  type ScoreGraphPoint,
+  getExecDataKey,
+  getExecDisplayName,
+} from '../hooks/useScoreGraphData';
 import { useInputFilter } from '../hooks/useGraphData';
 
 interface ScoreGraphProps {

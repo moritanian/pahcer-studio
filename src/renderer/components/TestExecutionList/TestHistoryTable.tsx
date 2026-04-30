@@ -285,7 +285,10 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
     return true;
   });
 
-  const currentPageData = filteredExecutions.slice(page * effectiveRowsPerPage, page * effectiveRowsPerPage + effectiveRowsPerPage);
+  const currentPageData = filteredExecutions.slice(
+    page * effectiveRowsPerPage,
+    page * effectiveRowsPerPage + effectiveRowsPerPage,
+  );
 
   if (loading) {
     return (
@@ -330,7 +333,10 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
           <Select
             size="small"
             value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(0);
+            }}
             sx={{ height: 28, fontSize: '0.8rem', minWidth: 100 }}
           >
             <MenuItem value="all">全ステータス</MenuItem>
@@ -342,7 +348,10 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
             size="small"
             placeholder="テスト数"
             value={testCountFilter}
-            onChange={(e) => { setTestCountFilter(e.target.value.replace(/[^0-9]/g, '')); setPage(0); }}
+            onChange={(e) => {
+              setTestCountFilter(e.target.value.replace(/[^0-9]/g, ''));
+              setPage(0);
+            }}
             sx={{ width: 80, '& .MuiInputBase-root': { height: 28, fontSize: '0.8rem' } }}
           />
         </Box>
@@ -358,7 +367,9 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
           size="small"
           padding="none"
           // 行高を内容に依存させない (折返しによる rowHeight 変動で autoRows が振動するのを防ぐ)
-          sx={{ '& tbody td': { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }}
+          sx={{
+            '& tbody td': { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+          }}
         >
           <TableHead>
             <TableRow sx={{ backgroundColor: 'rgba(0, 0, 0, 0.04)' }}>
@@ -370,7 +381,7 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                     py: 0.5,
                     px: 1,
                     minWidth: column.minWidth,
-                    ...(('maxWidth' in column) && { maxWidth: column.maxWidth }),
+                    ...('maxWidth' in column && { maxWidth: column.maxWidth }),
                   }}
                 >
                   {column.tooltip ? (
@@ -430,8 +441,16 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                       }}
                     />
                   ) : (
-                    <Tooltip title={execution.comment || ''} arrow enterDelay={500} placement="top-start">
-                      <Box component="span" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <Tooltip
+                      title={execution.comment || ''}
+                      arrow
+                      enterDelay={500}
+                      placement="top-start"
+                    >
+                      <Box
+                        component="span"
+                        sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                      >
                         {execution.comment || '-'}
                       </Box>
                     </Tooltip>
@@ -466,11 +485,13 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                   {execution.maxExecutionTime ? `${execution.maxExecutionTime.toFixed(2)}ms` : '-'}
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>
-                  {execution.status === 'RUNNING' && execution.completedCount != null && execution.totalCount != null
+                  {execution.status === 'RUNNING' &&
+                  execution.completedCount != null &&
+                  execution.totalCount != null
                     ? `${execution.completedCount}/${execution.totalCount}`
                     : execution.acceptedCount != null && execution.totalCount != null
-                    ? `${execution.acceptedCount}/${execution.totalCount}`
-                    : '-'}
+                      ? `${execution.acceptedCount}/${execution.totalCount}`
+                      : '-'}
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>
                   <Tooltip title="削除" disableFocusListener>
@@ -490,17 +511,17 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
         </Table>
       </TableContainer>
       <TablePagination
-        rowsPerPageOptions={[
-          { value: -1, label: 'auto' },
-          10, 25, 50,
-        ]}
+        rowsPerPageOptions={[{ value: -1, label: 'auto' }, 10, 25, 50]}
         component="div"
         count={filteredExecutions.length}
         rowsPerPage={rowsPerPage}
         page={page}
         onPageChange={(_, newPage) => {
           // auto 時は effectiveRowsPerPage でページ計算
-          const maxPage = Math.max(0, Math.ceil(filteredExecutions.length / effectiveRowsPerPage) - 1);
+          const maxPage = Math.max(
+            0,
+            Math.ceil(filteredExecutions.length / effectiveRowsPerPage) - 1,
+          );
           setPage(Math.min(newPage, maxPage));
         }}
         onRowsPerPageChange={(e) => {

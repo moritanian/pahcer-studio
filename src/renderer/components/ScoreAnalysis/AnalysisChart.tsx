@@ -65,10 +65,7 @@ const AnalysisChart: React.FC<AnalysisChartProps> = ({
       useRelativeScore,
     };
     try {
-      localStorage.setItem(
-        `scoreAnalysis.graphSettings.${workspaceId}`,
-        JSON.stringify(settings),
-      );
+      localStorage.setItem(`scoreAnalysis.graphSettings.${workspaceId}`, JSON.stringify(settings));
     } catch {
       // ignore
     }

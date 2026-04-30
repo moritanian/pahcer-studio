@@ -83,18 +83,17 @@ export class ExecutionService extends EventEmitter {
         'Failed to create temp config, but continuing execution...',
       );
     } else {
-      this.executionTempConfigs.set(this.execKey(workspace.id, executionId), tempConfigResult.tempPath);
+      this.executionTempConfigs.set(
+        this.execKey(workspace.id, executionId),
+        tempConfigResult.tempPath,
+      );
       // 一時ファイルを --setting-file として使うようリクエストを上書き
       request = { ...request, settingFile: tempConfigResult.tempPath };
       // out_dir が指定されていれば記録
       if (tempConfigResult.outDir) {
         this.executionOutDirs.set(this.execKey(workspace.id, executionId), tempConfigResult.outDir);
       }
-      this.emitLog(
-        executionId,
-        'info',
-        `Temp config created: ${tempConfigResult.tempPath}`,
-      );
+      this.emitLog(executionId, 'info', `Temp config created: ${tempConfigResult.tempPath}`);
     }
 
     // リポジトリに初期状態を保存させる。
@@ -298,9 +297,10 @@ export class ExecutionService extends EventEmitter {
 
       // Determine seed range
       const startSeed = request.startSeed ?? pahcerConfig.test?.start_seed ?? 0;
-      const endSeed = request.testCaseCount != null
-        ? startSeed + request.testCaseCount
-        : (pahcerConfig.test?.end_seed ?? startSeed + 100);
+      const endSeed =
+        request.testCaseCount != null
+          ? startSeed + request.testCaseCount
+          : (pahcerConfig.test?.end_seed ?? startSeed + 100);
       const seeds: number[] = [];
       for (let i = startSeed; i < endSeed; i++) {
         seeds.push(i);
@@ -310,7 +310,8 @@ export class ExecutionService extends EventEmitter {
 
       // Run compile_steps locally before Lambda invoke
       // aws_lambda.test.compile_steps があれば test.compile_steps を完全に置き換え
-      const compileSteps = lambdaConfig.test?.compile_steps ?? pahcerConfig.test?.compile_steps ?? [];
+      const compileSteps =
+        lambdaConfig.test?.compile_steps ?? pahcerConfig.test?.compile_steps ?? [];
       if (compileSteps.length > 0) {
         const execFileAsync = promisify(execFile);
         for (const step of compileSteps) {
@@ -336,13 +337,18 @@ export class ExecutionService extends EventEmitter {
       const uploadFile = lambdaConfig.upload_file;
       const binaryPath = path.resolve(workspace.targetDirectory, uploadFile);
       const uploadedFilename = path.basename(uploadFile);
-      this.emitLog(executionId, 'info', `[Lambda] seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), parallel: ${parallel}, function: ${lambdaConfig.function_name}`);
+      this.emitLog(
+        executionId,
+        'info',
+        `[Lambda] seeds: ${seeds.length} (${startSeed}..${endSeed - 1}), parallel: ${parallel}, function: ${lambdaConfig.function_name}`,
+      );
 
       // Load best scores and objective for relative score calculation
       const bestScores = await this.configService.getBestScores(workspace);
       const objective = await this.configService.getObjective(workspace);
 
-      const log = (level: 'info' | 'error', message: string) => this.emitLog(executionId, level, message);
+      const log = (level: 'info' | 'error', message: string) =>
+        this.emitLog(executionId, level, message);
       const state = this.resultProcessor.createProgressState(seeds.length);
 
       this.resultProcessor.printHeader(log);
@@ -378,9 +384,9 @@ export class ExecutionService extends EventEmitter {
       }
 
       // Download case outputs in background (not blocking score display)
-      this.lambdaService.downloadCaseOutputs(pahcerConfig, workspace, executionId, seeds).catch(
-        (err) => console.error(`Failed to download case outputs: ${err}`),
-      );
+      this.lambdaService
+        .downloadCaseOutputs(pahcerConfig, workspace, executionId, seeds)
+        .catch((err) => console.error(`Failed to download case outputs: ${err}`));
 
       await this.cleanupTempConfig(workspace.id, executionId);
 

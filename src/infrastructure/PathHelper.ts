@@ -163,7 +163,6 @@ export class PathHelper {
     return path.join(workspaceDir, 'tools', 'err');
   }
 
-
   /**
    * json ディレクトリのパスを取得
    */

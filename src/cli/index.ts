@@ -257,18 +257,14 @@ program
     'Bind address for the server. Non-loopback values (e.g., 0.0.0.0) expose the API ' +
       'without auth and allow arbitrary command execution; only use on a trusted network.',
   )
-  .option(
-    '-p, --port <port>',
-    'Port to listen on (default: 3000)',
-    (v) => {
-      const n = parseInt(v, 10);
-      if (Number.isNaN(n)) {
-        console.error(`Invalid --port value: ${v}`);
-        process.exit(1);
-      }
-      return n;
-    },
-  )
+  .option('-p, --port <port>', 'Port to listen on (default: 3000)', (v) => {
+    const n = parseInt(v, 10);
+    if (Number.isNaN(n)) {
+      console.error(`Invalid --port value: ${v}`);
+      process.exit(1);
+    }
+    return n;
+  })
   .action(async (options) => {
     try {
       await startServer(options.browser !== false, options.force, options.host, options.port);
@@ -722,33 +718,35 @@ resultsCommand
           const avgScore = exec.averageScore
             ? Math.round(exec.averageScore).toLocaleString('en-US')
             : '-';
-          const relative = exec.averageRelativeScore != null
-            ? `${(exec.averageRelativeScore * 100).toFixed(2)}%`
-            : '-';
-          const log10 = exec.averageScore && exec.averageScore > 0
-            ? Math.log10(exec.averageScore).toFixed(4)
-            : '-';
-          const maxTime = exec.maxExecutionTime != null
-            ? `${exec.maxExecutionTime.toFixed(0)}ms`
-            : '-';
-          const cases = exec.acceptedCount != null && exec.totalCount != null
-            ? `${exec.acceptedCount}/${exec.totalCount}`
-            : '-';
-          const time = exec.startTime
-            ? new Date(exec.startTime).toLocaleString()
-            : '-';
+          const relative =
+            exec.averageRelativeScore != null
+              ? `${(exec.averageRelativeScore * 100).toFixed(2)}%`
+              : '-';
+          const log10 =
+            exec.averageScore && exec.averageScore > 0
+              ? Math.log10(exec.averageScore).toFixed(4)
+              : '-';
+          const maxTime =
+            exec.maxExecutionTime != null ? `${exec.maxExecutionTime.toFixed(0)}ms` : '-';
+          const cases =
+            exec.acceptedCount != null && exec.totalCount != null
+              ? `${exec.acceptedCount}/${exec.totalCount}`
+              : '-';
+          const time = exec.startTime ? new Date(exec.startTime).toLocaleString() : '-';
           const comment = exec.comment || '';
 
-          console.log([
-            exec.id.padEnd(10),
-            time.padEnd(22),
-            avgScore.padStart(12),
-            relative.padStart(10),
-            log10.padStart(8),
-            maxTime.padStart(10),
-            cases.padStart(10),
-            comment,
-          ].join(' | '));
+          console.log(
+            [
+              exec.id.padEnd(10),
+              time.padEnd(22),
+              avgScore.padStart(12),
+              relative.padStart(10),
+              log10.padStart(8),
+              maxTime.padStart(10),
+              cases.padStart(10),
+              comment,
+            ].join(' | '),
+          );
         });
       }
     } catch (error) {
@@ -795,18 +793,20 @@ resultsCommand
         const avgScore = exec.averageScore
           ? Math.round(exec.averageScore).toLocaleString('en-US')
           : '-';
-        const relative = exec.averageRelativeScore != null
-          ? `${(exec.averageRelativeScore * 100).toFixed(2)}%`
-          : '-';
-        const log10 = exec.averageScore && exec.averageScore > 0
-          ? Math.log10(exec.averageScore).toFixed(4)
-          : '-';
-        const maxTime = exec.maxExecutionTime != null
-          ? `${exec.maxExecutionTime.toFixed(0)}ms`
-          : '-';
-        const accepted = exec.acceptedCount != null && exec.totalCount != null
-          ? `${exec.acceptedCount}/${exec.totalCount}`
-          : '-';
+        const relative =
+          exec.averageRelativeScore != null
+            ? `${(exec.averageRelativeScore * 100).toFixed(2)}%`
+            : '-';
+        const log10 =
+          exec.averageScore && exec.averageScore > 0
+            ? Math.log10(exec.averageScore).toFixed(4)
+            : '-';
+        const maxTime =
+          exec.maxExecutionTime != null ? `${exec.maxExecutionTime.toFixed(0)}ms` : '-';
+        const accepted =
+          exec.acceptedCount != null && exec.totalCount != null
+            ? `${exec.acceptedCount}/${exec.totalCount}`
+            : '-';
 
         console.log(`ID               : ${exec.id}`);
         console.log(`Status           : ${exec.status}`);
@@ -831,18 +831,29 @@ resultsCommand
           console.log(caseHeader);
           console.log('-'.repeat(caseHeader.length));
 
-          cases.forEach((c: { seed: number; score: number | null; relativeScore: number | null; executionTime: number | null; status: string }) => {
-            const score = c.score != null ? Math.round(c.score).toLocaleString('en-US') : '-';
-            const rel = c.relativeScore != null ? `${(c.relativeScore * 100).toFixed(2)}%` : '-';
-            const caseTime = c.executionTime != null ? `${Math.round(c.executionTime * 1000)}ms` : '-';
-            console.log([
-              String(c.seed).padStart(6),
-              score.padStart(10),
-              rel.padStart(10),
-              caseTime.padStart(10),
-              c.status.padEnd(10),
-            ].join(' | '));
-          });
+          cases.forEach(
+            (c: {
+              seed: number;
+              score: number | null;
+              relativeScore: number | null;
+              executionTime: number | null;
+              status: string;
+            }) => {
+              const score = c.score != null ? Math.round(c.score).toLocaleString('en-US') : '-';
+              const rel = c.relativeScore != null ? `${(c.relativeScore * 100).toFixed(2)}%` : '-';
+              const caseTime =
+                c.executionTime != null ? `${Math.round(c.executionTime * 1000)}ms` : '-';
+              console.log(
+                [
+                  String(c.seed).padStart(6),
+                  score.padStart(10),
+                  rel.padStart(10),
+                  caseTime.padStart(10),
+                  c.status.padEnd(10),
+                ].join(' | '),
+              );
+            },
+          );
         }
       }
     } catch (error) {
@@ -942,13 +953,13 @@ awsCommand
   .command('deploy-tools [directory]')
   .description(
     'Upload built tool binaries (gen, tester, vis) to S3 for Lambda execution\n\n' +
-    'Requires [aws_lambda] section in pahcer_config.toml:\n\n' +
-    '  [aws_lambda]\n' +
-    '  region = "ap-northeast-1"\n' +
-    '  function_name = "ahc-tester"\n' +
-    '  tools_bucket = "ahc-tester-tools-XXXX"\n' +
-    '  parallel = 10\n' +
-    '  # profile = "admin"  # optional: AWS profile (default: credential chain)',
+      'Requires [aws_lambda] section in pahcer_config.toml:\n\n' +
+      '  [aws_lambda]\n' +
+      '  region = "ap-northeast-1"\n' +
+      '  function_name = "ahc-tester"\n' +
+      '  tools_bucket = "ahc-tester-tools-XXXX"\n' +
+      '  parallel = 10\n' +
+      '  # profile = "admin"  # optional: AWS profile (default: credential chain)',
   )
   .action(async (directory) => {
     const isRunning = await isServerRunning();
@@ -995,9 +1006,7 @@ awsCommand
 
     try {
       const workspace = await getWorkspace(directory);
-      const response = await fetch(
-        `${SERVER_URL}/api/workspaces/${workspace.id}/config`,
-      );
+      const response = await fetch(`${SERVER_URL}/api/workspaces/${workspace.id}/config`);
 
       if (!response.ok) {
         console.error('Failed to fetch config');

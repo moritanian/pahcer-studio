@@ -289,5 +289,4 @@ export class ProcessManager {
       // tools/out not found is normal in some cases
     }
   }
-
 }
