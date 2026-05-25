@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
   Box,
@@ -97,12 +97,21 @@ const theme = createTheme({
   },
 });
 
+const TAB_SLUGS = ['run', 'history', 'analysis'] as const;
+type TabSlug = (typeof TAB_SLUGS)[number];
+
 function App() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // 現在選択されているタブのインデックス
-  const [tabIndex, setTabIndex] = useState(0);
+  // URL パスからタブを判定 (例: /w/:id/run → 0)
+  const tabIndex = (() => {
+    const m = location.pathname.match(/^\/w\/[^/]+\/([^/]+)/);
+    const slug = m?.[1] as TabSlug | undefined;
+    const idx = slug ? TAB_SLUGS.indexOf(slug) : -1;
+    return idx >= 0 ? idx : 0;
+  })();
 
   // ワークスペースの状態
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
@@ -135,14 +144,26 @@ function App() {
     loadWorkspace();
   }, [workspaceId, navigate]);
 
+  // URL にタブが含まれていない場合はデフォルトを補う
+  useEffect(() => {
+    if (!workspaceId) return;
+    const m = location.pathname.match(/^\/w\/[^/]+\/?([^/]*)/);
+    const slug = m?.[1];
+    if (!slug || !TAB_SLUGS.includes(slug as TabSlug)) {
+      navigate(`/w/${workspaceId}/${TAB_SLUGS[0]}`, { replace: true });
+    }
+  }, [workspaceId, location.pathname, navigate]);
+
   // ローディング中は何も表示しない
   if (loading || !currentWorkspace) {
     return null;
   }
 
-  // タブ変更ハンドラー
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabIndex(newValue);
+  // タブ変更ハンドラー (URL を更新)
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    if (!workspaceId) return;
+    const slug = TAB_SLUGS[newValue] ?? TAB_SLUGS[0];
+    navigate(`/w/${workspaceId}/${slug}`, { replace: true });
   };
 
   // ワークスペース選択ハンドラー
@@ -152,7 +173,7 @@ function App() {
       const workspace = await apiClient.workspace.create(path, useWsl);
       setIsSelectorOpen(false);
       // workspace ID を含む URL にナビゲート
-      navigate(`/w/${workspace.id}`);
+      navigate(`/w/${workspace.id}/${TAB_SLUGS[0]}`);
     } catch (error) {
       console.error('Failed to create workspace:', error);
     }

@@ -120,7 +120,7 @@ const WorkspaceSelectorContent: React.FC<WorkspaceSelectorContentProps> = ({
       // スタンドアロンモードでは workspace を作成してナビゲート
       try {
         const workspace = await apiClient.workspace.create(path, useWsl);
-        navigate(`/w/${workspace.id}`);
+        navigate(`/w/${workspace.id}/run`);
       } catch (error) {
         console.error('Failed to create workspace:', error);
       }
