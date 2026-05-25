@@ -44,7 +44,7 @@ const bindWheelToRanges = (doc: Document | null | undefined) => {
         const min = parseFloat(input.min || '0');
         const max = parseFloat(input.max || (input.value ? input.value : '100'));
         const cur = parseFloat(input.value || '0');
-        const direction = e.deltaY < 0 ? 1 : -1;
+        const direction = e.deltaY < 0 ? -1 : 1;
         const multiplier = e.shiftKey ? 10 : 1;
         const next = Math.max(min, Math.min(max, cur + direction * step * multiplier));
         if (next !== cur) {
