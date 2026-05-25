@@ -39,7 +39,7 @@ function TabPanel(props: TabPanelProps) {
       hidden={value !== index}
       id={`tabpanel-${index}`}
       aria-labelledby={`tab-${index}`}
-      style={{ height: 'calc(100vh - 60px)' }}
+      style={{ flex: 1, minHeight: 0 }}
       {...other}
     >
       <Box sx={{ p: 0, height: '100%' }}>{children}</Box>
@@ -162,7 +162,7 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <EventSourceProvider>
-        <Box sx={{ flexGrow: 1 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
           <AppBar position="static">
             <Box sx={{ display: 'flex', alignItems: 'center', pr: 2 }}>
               <Typography
