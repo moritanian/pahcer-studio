@@ -28,6 +28,36 @@ interface VisualizerWindow extends Window {
   generate?: () => void;
 }
 
+// iframe 内の range スライダ (turn バー等) にホイール操作を割り当てる
+const bindWheelToRanges = (doc: Document | null | undefined) => {
+  if (!doc) return;
+  const ranges = doc.querySelectorAll<HTMLInputElement>('input[type="range"]');
+  ranges.forEach((input) => {
+    const marker = input as HTMLInputElement & { __wheelBound?: boolean };
+    if (marker.__wheelBound) return;
+    marker.__wheelBound = true;
+    input.addEventListener(
+      'wheel',
+      (e: WheelEvent) => {
+        e.preventDefault();
+        const step = parseFloat(input.step || '1') || 1;
+        const min = parseFloat(input.min || '0');
+        const max = parseFloat(input.max || (input.value ? input.value : '100'));
+        const cur = parseFloat(input.value || '0');
+        const direction = e.deltaY < 0 ? 1 : -1;
+        const multiplier = e.shiftKey ? 10 : 1;
+        const next = Math.max(min, Math.min(max, cur + direction * step * multiplier));
+        if (next !== cur) {
+          input.value = String(next);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      },
+      { passive: false },
+    );
+  });
+};
+
 // Helper: wait until "generate" becomes available on iframe window
 const waitGenerate = (
   win: VisualizerWindow | null | undefined,
@@ -141,6 +171,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
                 outputTextarea.value = output || '';
                 const outputEvent = new Event('input', { bubbles: true });
                 outputTextarea.dispatchEvent(outputEvent);
+
+                // turn バー等の range スライダにホイール操作をバインド
+                bindWheelToRanges(iframeDoc);
               }
             }
           }
@@ -285,6 +318,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
     if (!iframe) return;
 
     const handleLoad = () => {
+      // iframe ロード直後にホイール操作をバインド
+      bindWheelToRanges(iframe.contentDocument);
       // iframe のコンテンツがロードされた後、選択中の実行があれば反映
       if (selectedExecution?.id && selectedExecution.status === 'COMPLETED') {
         handleSeedChange(selectedSeed, false);
