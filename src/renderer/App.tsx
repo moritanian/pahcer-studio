@@ -120,13 +120,19 @@ function App() {
 
   // URL パラメータから workspace をロード
   useEffect(() => {
-    const loadWorkspace = async () => {
-      if (!workspaceId) {
-        // workspace ID がない場合は一覧ページへリダイレクト
-        navigate('/workspaces', { replace: true });
-        return;
-      }
+    if (!workspaceId) {
+      // workspace ID がない場合は一覧ページへリダイレクト
+      navigate('/workspaces', { replace: true });
+      return;
+    }
 
+    // 既に同じ workspace を読み込み済みなら再フェッチしない。
+    // navigate の identity は URL (タブ) が変わるたびに変化するため、
+    // ガードがないとタブ切替のたびにこの effect が再実行され、
+    // loading=true → 子要素 unmount → remount で選択状態が失われてしまう。
+    if (currentWorkspace?.id === workspaceId) return;
+
+    const loadWorkspace = async () => {
       try {
         setLoading(true);
         // workspace ID から workspace を取得
@@ -142,7 +148,7 @@ function App() {
     };
 
     loadWorkspace();
-  }, [workspaceId, navigate]);
+  }, [workspaceId, currentWorkspace?.id, navigate]);
 
   // URL にタブが含まれていない場合はデフォルトを補う
   useEffect(() => {
