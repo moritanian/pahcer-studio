@@ -425,6 +425,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
           <FormControl sx={{ width: '180px' }}>
             <Autocomplete
               freeSolo
+              disableClearable
               size="small"
               options={executedSeeds.map(String)}
               filterOptions={(options) => options}
