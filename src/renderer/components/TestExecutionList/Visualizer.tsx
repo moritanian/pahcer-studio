@@ -8,6 +8,7 @@ import {
   TextField,
   FormControl,
   Button,
+  Autocomplete,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -87,6 +88,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
   const [selectedSeed, setSelectedSeed] = useState<number>(0);
   const [seedDraft, setSeedDraft] = useState<string>('0');
   const [loadingCaseOutput, setLoadingCaseOutput] = useState(false);
+  const [executedSeeds, setExecutedSeeds] = useState<number[]>([]);
+  const [loadingExecutedSeeds, setLoadingExecutedSeeds] = useState(false);
   // 表示倍率 (%). 25〜150
   const [scalePct, setScalePct] = useState<number>(100);
 
@@ -104,10 +107,21 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
 
   // 入力制限: 0 以上であれば上限なし
   const minSeed = 0;
+  const selectedSeedRef = useRef(selectedSeed);
 
   // URL バリデーション: https://img.atcoder.jp から始まり .html で終わる
   const urlPattern = /^https:\/\/img\.atcoder\.jp\/.*\.html(?:\?.*)?$/;
   const urlValid = urlInput === '' ? true : urlPattern.test(urlInput);
+
+  const normalizeToExecutedSeed = useCallback(
+    (seed: number) => {
+      if (executedSeeds.length === 0 || executedSeeds.includes(seed)) {
+        return seed;
+      }
+      return executedSeeds[0];
+    },
+    [executedSeeds],
+  );
 
   // 初回チェック
   useEffect(() => {
@@ -134,7 +148,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
   // シード変更ハンドラー
   const handleSeedChange = useCallback(
     async (newSeed: number, maintainFocus: boolean = true) => {
-      setSelectedSeed(newSeed);
+      const seedToDisplay = normalizeToExecutedSeed(newSeed);
+      selectedSeedRef.current = seedToDisplay;
+      setSelectedSeed(seedToDisplay);
 
       if (selectedExecution?.id) {
         setLoadingCaseOutput(true);
@@ -146,7 +162,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
           const output = await apiClient.execution.getTestCaseResult(
             workspaceId,
             selectedExecution.id,
-            newSeed,
+            seedToDisplay,
           );
 
           // ビジュアライザーのiframeを更新
@@ -164,7 +180,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
                 // ensure generate defined
                 await waitGenerate(iframe.contentWindow as VisualizerWindow);
 
-                seedInput.value = newSeed?.toString() ?? '';
+                seedInput.value = seedToDisplay.toString();
                 const event = new Event('change', { bubbles: true });
                 seedInput.dispatchEvent(event);
 
@@ -193,7 +209,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
         }
       }
     },
-    [selectedExecution?.id, onError, workspaceId],
+    [selectedExecution?.id, onError, workspaceId, normalizeToExecutedSeed],
   );
 
   /**
@@ -206,25 +222,10 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
 
   // キーボード操作
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    switch (e.key) {
-      case 'ArrowUp':
-      case 'ArrowDown': {
-        // ±1 で即時反映
-        e.preventDefault();
-        const step = e.key === 'ArrowUp' ? 1 : -1;
-        const next = Math.max(minSeed, selectedSeed + step);
-        setSeedDraft(String(next));
-        handleSeedChange(next, true);
-        break;
-      }
-      case 'Enter': {
-        // Enter で確定反映
-        e.preventDefault();
-        commitSeedDraft();
-        break;
-      }
-      default:
-        break;
+    if (e.key === 'Enter') {
+      // Enter で確定反映
+      e.preventDefault();
+      commitSeedDraft();
     }
   };
 
@@ -235,26 +236,89 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
   const commitSeedDraft = () => {
     const num = Number(seedDraft);
     if (isNaN(num) || num < minSeed) return;
-    if (num !== selectedSeed) {
-      handleSeedChange(num, false);
+    const next = normalizeToExecutedSeed(num);
+    if (next !== selectedSeed) {
+      handleSeedChange(next, false);
+    } else {
+      setSeedDraft(String(next));
     }
   };
 
-  // 選択された実行が変わったら同じシードで再描画
-  // ID ベースで変更を検知し、ステータス更新だけでは再描画しない
+  // 選択された実行が変わったら、その実行に含まれる seed 一覧を読み込む
   const prevExecutionIdRef = useRef<string | null>(null);
+  const prevExecutionStatusRef = useRef<string | null>(null);
   useEffect(() => {
     const currentId = selectedExecution?.id ?? null;
+    const currentStatus = selectedExecution?.status ?? null;
     const isNewSelection = currentId !== prevExecutionIdRef.current;
+    const isNewlyCompleted =
+      currentStatus === 'COMPLETED' && prevExecutionStatusRef.current !== 'COMPLETED';
     prevExecutionIdRef.current = currentId;
+    prevExecutionStatusRef.current = currentStatus;
 
-    if (isNewSelection && selectedExecution?.id && selectedExecution.status === 'COMPLETED') {
-      handleSeedChange(selectedSeed, false);
+    if (!isNewSelection && !isNewlyCompleted) return;
+
+    if (!selectedExecution?.id || selectedExecution.status !== 'COMPLETED') {
+      setExecutedSeeds([]);
+      return;
     }
-  }, [selectedExecution?.id, selectedExecution?.status, handleSeedChange, selectedSeed]);
+
+    let cancelled = false;
+    const loadExecutedSeeds = async () => {
+      setLoadingExecutedSeeds(true);
+      try {
+        const cases = await apiClient.execution.getTestCases(workspaceId, selectedExecution.id);
+        if (cancelled) return;
+
+        const seeds = Array.from(new Set(cases.map((testCase) => testCase.seed))).sort(
+          (a, b) => a - b,
+        );
+        setExecutedSeeds(seeds);
+
+        if (seeds.length > 0) {
+          const currentSeed = selectedSeedRef.current;
+          const next = seeds.includes(currentSeed) ? currentSeed : seeds[0];
+          setSelectedSeed(next);
+          setSeedDraft(String(next));
+        }
+      } catch (err) {
+        console.error('Error loading executed seeds:', err);
+        onError('実行済み seed 一覧の取得に失敗しました');
+        setExecutedSeeds([]);
+      } finally {
+        if (!cancelled) {
+          setLoadingExecutedSeeds(false);
+        }
+      }
+    };
+
+    loadExecutedSeeds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, selectedExecution?.id, selectedExecution?.status, onError]);
+
+  // 実行済み seed 一覧が変わったら、有効な seed へ補正して再描画する
+  useEffect(() => {
+    if (!selectedExecution?.id || selectedExecution.status !== 'COMPLETED') return;
+    if (loadingExecutedSeeds || executedSeeds.length === 0) return;
+
+    const next = normalizeToExecutedSeed(selectedSeed);
+    handleSeedChange(next, false);
+  }, [
+    selectedExecution?.id,
+    selectedExecution?.status,
+    executedSeeds,
+    loadingExecutedSeeds,
+    normalizeToExecutedSeed,
+    selectedSeed,
+    handleSeedChange,
+  ]);
 
   // selectedSeed が変われば draft も同期
   useEffect(() => {
+    selectedSeedRef.current = selectedSeed;
     setSeedDraft(String(selectedSeed));
   }, [selectedSeed]);
 
@@ -358,24 +422,44 @@ const Visualizer: React.FC<VisualizerProps> = ({ workspaceId, selectedExecution,
           {selectedExecution?.id && ` (ID: ${selectedExecution.id})`}
         </Typography>
         {visualizerReady && selectedExecution?.status === 'COMPLETED' && (
-          <FormControl sx={{ width: '150px' }}>
-            <TextField
-              inputRef={seedInputRef}
-              label="Seed"
-              type="number"
+          <FormControl sx={{ width: '180px' }}>
+            <Autocomplete
+              freeSolo
               size="small"
-              value={seedDraft}
-              onChange={handleSeedInputChange}
-              onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
-              InputProps={{
-                inputProps: {
-                  min: minSeed,
-                  step: 1,
-                },
+              options={executedSeeds.map(String)}
+              filterOptions={(options) => options}
+              inputValue={seedDraft}
+              onInputChange={(_, value) => setSeedDraft(value)}
+              onChange={(_, value) => {
+                const next = Array.isArray(value) ? value[0] : value;
+                if (next == null) return;
+                setSeedDraft(String(next));
+                const num = Number(next);
+                if (!Number.isNaN(num) && num >= minSeed) {
+                  handleSeedChange(num, false);
+                }
               }}
-              disabled={loadingCaseOutput}
-              variant="outlined"
+              disabled={loadingCaseOutput || loadingExecutedSeeds}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  inputRef={seedInputRef}
+                  label="Seed"
+                  type="number"
+                  onChange={handleSeedInputChange}
+                  onKeyDown={handleKeyDown}
+                  onBlur={handleBlur}
+                  InputProps={{
+                    ...params.InputProps,
+                    inputProps: {
+                      ...params.inputProps,
+                      min: minSeed,
+                      step: 1,
+                    },
+                  }}
+                  variant="outlined"
+                />
+              )}
             />
           </FormControl>
         )}
