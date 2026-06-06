@@ -22,6 +22,11 @@ const TestExecutionList: React.FC<TestExecutionListProps> = ({ workspaceId }) =>
   const [selectedExecution, setSelectedExecution] = useState<TestExecution | null>(null);
   const [errorSnackbar, setErrorSnackbar] = useState('');
 
+  // エラーハンドラー（子コンポーネント用）
+  const handleError = useCallback((message: string) => {
+    setErrorSnackbar(message);
+  }, []);
+
   // テスト実行リストの取得
   const fetchExecutions = useCallback(async () => {
     try {
@@ -33,7 +38,7 @@ const TestExecutionList: React.FC<TestExecutionListProps> = ({ workspaceId }) =>
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, handleError]);
 
   // 初回読み込み
   useEffect(() => {
@@ -89,18 +94,13 @@ const TestExecutionList: React.FC<TestExecutionListProps> = ({ workspaceId }) =>
   }, [executions, selectedExecution]);
 
   // テスト実行選択ハンドラー
-  const handleExecutionSelect = (execution: TestExecution) => {
+  const handleExecutionSelect = useCallback((execution: TestExecution) => {
     setSelectedExecution(execution);
-  };
+  }, []);
 
-  // エラーハンドラー（子コンポーネント用）
-  const handleError = (message: string) => {
-    setErrorSnackbar(message);
-  };
-
-  const handleErrorSnackbarClose = () => {
+  const handleErrorSnackbarClose = useCallback(() => {
     setErrorSnackbar('');
-  };
+  }, []);
 
   return (
     <Box
