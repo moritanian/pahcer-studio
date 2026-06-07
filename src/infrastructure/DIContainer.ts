@@ -10,6 +10,7 @@ import { ExecutionService } from '../services/ExecutionService';
 import { ScoreAnalysisService } from '../services/ScoreAnalysisService';
 import { LambdaService } from '../services/LambdaService';
 import { ResultProcessor } from '../services/ResultProcessor';
+import { SeedScoreService } from '../services/SeedScoreService';
 
 /**
  * 依存性注入コンテナ
@@ -27,6 +28,7 @@ export class DIContainer {
   private scoreAnalysisService?: ScoreAnalysisService;
   private lambdaService?: LambdaService;
   private resultProcessor?: ResultProcessor;
+  private seedScoreService?: SeedScoreService;
 
   private constructor() {
     this.setupDependencies();
@@ -69,6 +71,9 @@ export class DIContainer {
 
     // ScoreAnalysisServiceを初期化
     this.scoreAnalysisService = new ScoreAnalysisService();
+
+    // SeedScoreServiceを初期化
+    this.seedScoreService = new SeedScoreService(this.configService);
 
     // LambdaServiceを初期化
     this.lambdaService = new LambdaService();
@@ -158,6 +163,13 @@ export class DIContainer {
     return this.lambdaService;
   }
 
+  public getSeedScoreService(): SeedScoreService {
+    if (!this.seedScoreService) {
+      throw new Error('DIContainer not initialized. Call initialize() first.');
+    }
+    return this.seedScoreService;
+  }
+
   // テスト用のモック注入
   public registerMock<T>(key: string, mockInstance: T): void {
     this.dependencies.set(key, mockInstance);
@@ -173,6 +185,7 @@ export class DIContainer {
     this.scoreAnalysisService = undefined;
     this.lambdaService = undefined;
     this.resultProcessor = undefined;
+    this.seedScoreService = undefined;
     this.setupDependencies();
   }
 }

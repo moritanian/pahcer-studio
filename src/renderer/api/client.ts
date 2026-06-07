@@ -11,6 +11,7 @@ import {
   UpdateAnalysisRequest,
   AnalysisSettings,
 } from '../../schemas/analysis';
+import { SeedRankingResponse, BestPerSeedResponse } from '../../schemas/seedScore';
 
 const API_BASE = '/api';
 
@@ -167,6 +168,18 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ featureFormat }),
       });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  },
+  seed: {
+    getRanking: async (workspaceId: string, seed: number): Promise<SeedRankingResponse> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/seeds/${seed}/ranking`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    getBestPerSeed: async (workspaceId: string): Promise<BestPerSeedResponse> => {
+      const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/seeds/best`);
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },

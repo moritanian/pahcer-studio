@@ -10,6 +10,7 @@ import type {
 import AnalysisSettings from './AnalysisSettings';
 import ExecutionSelectionTable from './ExecutionSelectionTable';
 import AnalysisChart from './AnalysisChart';
+import SeedBestPanel from './SeedBestPanel';
 import { apiClient } from '../../api/client';
 import { useExecutionEvents } from '../../contexts/EventSourceContext';
 
@@ -258,6 +259,9 @@ const ScoreAnalysis: React.FC<ScoreAnalysisProps> = ({ workspaceId }) => {
           分析データが不足しています。「を更新」ボタンを押して、データを生成してください。
         </Alert>
       )}
+
+      {/* seed 別ベストスコアパネル */}
+      <SeedBestPanel workspaceId={workspaceId} />
 
       {/* 設定パネル */}
       <AnalysisSettings

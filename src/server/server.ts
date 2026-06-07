@@ -265,6 +265,37 @@ function setupRoutes(
     },
   );
 
+  // Seed best scores (どの execution が seed ごとに最良スコアか)
+  app.get('/api/workspaces/:workspaceId/seeds/best', validateWorkspace, async (req, res) => {
+    try {
+      const workspace = req.workspace!;
+      const seedScoreService = container.getSeedScoreService();
+      const result = await seedScoreService.getBestPerSeed(workspace);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  app.get(
+    '/api/workspaces/:workspaceId/seeds/:seed/ranking',
+    validateWorkspace,
+    async (req, res) => {
+      try {
+        const seed = parseInt(req.params.seed, 10);
+        if (Number.isNaN(seed)) {
+          return res.status(400).json({ error: 'Invalid seed' });
+        }
+        const workspace = req.workspace!;
+        const seedScoreService = container.getSeedScoreService();
+        const result = await seedScoreService.getSeedRanking(seed, workspace);
+        res.json(result);
+      } catch (error) {
+        res.status(500).json({ error: String(error) });
+      }
+    },
+  );
+
   // Workspaces API
   app.get('/api/workspaces', (req, res) => {
     try {

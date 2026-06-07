@@ -466,8 +466,10 @@ const TestHistoryTable: React.FC<TestHistoryTableProps> = ({
                   />
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>
-                  {execution.averageScore
-                    ? Math.round(execution.averageScore).toLocaleString('ja-JP')
+                  {execution.averageScore != null
+                    ? execution.averageScore.toLocaleString('ja-JP', {
+                        maximumFractionDigits: 2,
+                      })
                     : '-'}
                 </TableCell>
                 <TableCell sx={{ py: 0.5, px: 1 }}>
