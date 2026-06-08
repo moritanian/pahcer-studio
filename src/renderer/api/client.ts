@@ -15,6 +15,25 @@ import { SeedRankingResponse, BestPerSeedResponse } from '../../schemas/seedScor
 
 const API_BASE = '/api';
 
+/**
+ * 非 ok なレスポンスから表示用の Error を生成する。
+ * サーバは `{ error: string }` を返すので、その文字列を取り出して
+ * `String(error)` 由来の "Error: " プレフィックスを除去する。
+ * JSON でない場合は本文をそのまま使う。
+ */
+async function toResponseError(res: Response): Promise<Error> {
+  const body = await res.text();
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed.error === 'string') {
+      return new Error(parsed.error.replace(/^Error:\s*/, ''));
+    }
+  } catch {
+    // not JSON; fall through to raw body
+  }
+  return new Error(body);
+}
+
 export const apiClient = {
   execution: {
     start: async (workspaceId: string, request: TestExecutionRequest): Promise<{ id: string }> => {
@@ -23,7 +42,7 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     stop: async (workspaceId: string, executionId: string): Promise<{ success: boolean }> => {
@@ -33,24 +52,24 @@ export const apiClient = {
           method: 'POST',
         },
       );
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     getStatus: async (workspaceId: string, executionId: string): Promise<TestExecution | null> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/executions/${executionId}`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     getAll: async (workspaceId: string): Promise<TestExecution[]> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/executions`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     getTestCases: async (workspaceId: string, executionId: string): Promise<TestCase[]> => {
       const res = await fetch(
         `${API_BASE}/workspaces/${workspaceId}/executions/${executionId}/cases`,
       );
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     getTestCaseResult: async (
@@ -61,14 +80,14 @@ export const apiClient = {
       const res = await fetch(
         `${API_BASE}/workspaces/${workspaceId}/executions/${executionId}/cases/${seed}`,
       );
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     delete: async (workspaceId: string, executionId: string): Promise<void> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/executions/${executionId}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
     },
     update: async (
       workspaceId: string,
@@ -80,14 +99,14 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
   },
   workspace: {
     list: async (): Promise<Workspace[]> => {
       const res = await fetch(`${API_BASE}/workspaces`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     create: async (targetDirectory: string, useWsl?: boolean): Promise<Workspace> => {
@@ -96,25 +115,25 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetDirectory, useWsl }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     get: async (workspaceId: string): Promise<Workspace> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     delete: async (workspaceId: string): Promise<void> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
     },
   },
   settings: {
     get: async (): Promise<AppSettings> => {
       const res = await fetch(`${API_BASE}/settings`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     update: async (settings: Partial<AppSettings>): Promise<AppSettings> => {
@@ -123,7 +142,7 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
   },
@@ -134,7 +153,7 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     updateCache: async (
@@ -151,12 +170,12 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(request),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     getSettings: async (workspaceId: string): Promise<AnalysisSettings> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/analysis/settings`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     saveSettings: async (
@@ -168,19 +187,19 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ featureFormat }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
   },
   seed: {
     getRanking: async (workspaceId: string, seed: number): Promise<SeedRankingResponse> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/seeds/${seed}/ranking`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     getBestPerSeed: async (workspaceId: string): Promise<BestPerSeedResponse> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/seeds/best`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
   },
@@ -191,14 +210,14 @@ export const apiClient = {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/asset/visualizer`, {
         method: 'DELETE',
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
     getVisualizerEntry: async (
       workspaceId: string,
     ): Promise<{ exists: boolean; path: string | null }> => {
       const res = await fetch(`${API_BASE}/workspaces/${workspaceId}/asset/visualizer/entry`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       const data = await res.json();
       return data;
     },
@@ -211,7 +230,7 @@ export const apiClient = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await toResponseError(res);
       return res.json();
     },
   },

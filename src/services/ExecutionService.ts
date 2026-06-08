@@ -29,7 +29,12 @@ export class ExecutionService extends EventEmitter {
   private readonly scoreAnalysisService: ScoreAnalysisService;
   private readonly lambdaService: LambdaService;
   private readonly resultProcessor: ResultProcessor;
-  private readonly runningExecutions = new Set<string>();
+  /**
+   * 実行中の「ローカル」実行を管理する。key=execKey, value=workspaceId。
+   * ローカル実行は手元のマシン資源を専有するため、サーバ全体で同時に1つだけに制限する（排他）。
+   * Lambda 実行はリモートで手元資源を使わないため、ここでは管理せず制限もしない。
+   */
+  private readonly runningLocalExecutions = new Map<string, string>();
   private readonly executionTempConfigs = new Map<string, string>();
   private readonly executionOutDirs = new Map<string, string>();
   private readonly lambdaAbortControllers = new Map<string, AbortController>();
@@ -59,13 +64,33 @@ export class ExecutionService extends EventEmitter {
    * テスト実行を開始する
    */
   async startExecution(request: TestExecutionRequest, workspace: Workspace): Promise<string> {
-    // 同時実行チェック
-    if (this.runningExecutions.has(workspace.id)) {
-      throw new Error('このワークスペースでは既に実行が進行中です');
-    }
-
     const executionId = await this.generateNextExecutionId(workspace);
-    this.runningExecutions.add(workspace.id);
+    const execKey = this.execKey(workspace.id, executionId);
+
+    // Lambda 実行かどうかを先に判定する。
+    // 一時設定ファイルは aws_lambda 設定を変更しないので、ここで元の settingFile から
+    // 読んだ config と、後段で一時ファイルから読む config とで useLambda の結果は一致する。
+    const pahcerConfig = await this.configService.getConfig(workspace, request.settingFile);
+    const useLambda = request.useLambda ?? pahcerConfig.aws_lambda?.default ?? false;
+
+    // 同時実行チェック（ローカル実行のみ排他）。
+    // サーバはシングルインスタンス（instance.json で強制）なので、runningLocalExecutions が
+    // サーバ全体でのローカル実行状態の唯一の同期点になる。
+    // ローカル実行は手元のマシン資源を専有するため、workspace をまたいでも同時に1つだけ許可する。
+    // Lambda 実行は手元資源を使わないため制限しない（lambda+lambda / lambda+local は許可、
+    // local+local のみ禁止）。
+    if (!useLambda) {
+      if (this.runningLocalExecutions.size > 0) {
+        const runningWorkspaceId = this.runningLocalExecutions.values().next().value;
+        if (runningWorkspaceId === workspace.id) {
+          throw new Error('このワークスペースでは既にローカル実行が進行中です');
+        }
+        throw new Error(
+          `別のワークスペース (${runningWorkspaceId}) でローカル実行が進行中です。完了を待ってから再実行してください`,
+        );
+      }
+      this.runningLocalExecutions.set(execKey, workspace.id);
+    }
 
     // 一時設定ファイルを作成（元のファイルには触れない）
     this.emitLog(executionId, 'info', 'Creating temp config for test execution...');
@@ -112,15 +137,11 @@ export class ExecutionService extends EventEmitter {
     };
     await this.executionRepository.save(initialExecution, workspace);
 
-    // Lambda or Local execution
-    const pahcerConfig = await this.configService.getConfig(workspace, request.settingFile);
-    const useLambda = request.useLambda ?? pahcerConfig.aws_lambda?.default ?? false;
-
+    // Lambda or Local execution（useLambda は冒頭で判定済み）
     if (useLambda) {
       // Validate upload_file synchronously so the error surfaces in the HTTP response
       // (avoids the SSE race condition where fast-failing errors can be missed by the CLI)
       if (!pahcerConfig.aws_lambda?.upload_file) {
-        this.runningExecutions.delete(workspace.id);
         await this.cleanupTempConfig(workspace.id, executionId);
         await this.finalizeExecution(executionId, 'FAILED', workspace);
         throw new Error(
@@ -130,14 +151,14 @@ export class ExecutionService extends EventEmitter {
       this.executeLambda(executionId, request, pahcerConfig, workspace).catch((error) => {
         console.error(`Lambda execution ${executionId} failed fatally:`, error);
         this.updateExecutionStatus(executionId, 'FAILED', workspace);
-        this.runningExecutions.delete(workspace.id);
+        this.runningLocalExecutions.delete(execKey);
       });
     } else {
       // 非同期でpacher実行を開始
       this.executePacher(executionId, request, workspace).catch((error) => {
         console.error(`Execution ${executionId} failed fatally:`, error);
         this.updateExecutionStatus(executionId, 'FAILED', workspace);
-        this.runningExecutions.delete(workspace.id);
+        this.runningLocalExecutions.delete(execKey);
       });
     }
 
@@ -153,7 +174,7 @@ export class ExecutionService extends EventEmitter {
     if (killed) {
       await this.cleanupTempConfig(workspace.id, executionId);
       await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
-      this.runningExecutions.delete(workspace.id);
+      this.runningLocalExecutions.delete(this.execKey(workspace.id, executionId));
       return;
     }
 
@@ -165,7 +186,8 @@ export class ExecutionService extends EventEmitter {
       this.lambdaAbortControllers.delete(key);
       await this.cleanupTempConfig(workspace.id, executionId);
       await this.updateExecutionStatus(executionId, 'CANCELLED', workspace);
-      this.runningExecutions.delete(workspace.id);
+      // Lambda は runningLocalExecutions に登録していないが、no-op として安全
+      this.runningLocalExecutions.delete(key);
     }
   }
 
@@ -210,8 +232,8 @@ export class ExecutionService extends EventEmitter {
   async deleteExecution(executionId: string, workspace: Workspace): Promise<void> {
     // 稼働中かもしれないプロセスを停止しようと試みる
     this.processManager.killProcess(workspace.id, executionId);
-    // 実行中フラグをクリア
-    this.runningExecutions.delete(workspace.id);
+    // 実行中フラグをクリア（ローカル実行のみ。Lambda は未登録のため no-op）
+    this.runningLocalExecutions.delete(this.execKey(workspace.id, executionId));
     // その後、関連ディレクトリを削除
     await this.executionRepository.delete(executionId, workspace);
     this.emitLog(executionId, 'info', `Execution data deleted.`);
@@ -472,8 +494,8 @@ export class ExecutionService extends EventEmitter {
         await this.updateExecutionStatus(executionId, status, workspace);
       }
     } finally {
-      // 必ず実行中フラグをクリア
-      this.runningExecutions.delete(workspace.id);
+      // 必ず実行中フラグをクリア（ローカル実行のみ。Lambda は未登録のため no-op）
+      this.runningLocalExecutions.delete(this.execKey(workspace.id, executionId));
     }
   }
 
