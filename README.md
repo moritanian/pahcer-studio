@@ -271,7 +271,6 @@ upload_file = "./solution.py"
 
 `upload_file` で指定したファイルが Lambda の作業ディレクトリ直下に配置され、`test_steps` の `./solution.py` 参照と一致するので、そのまま実行できます。
 
-
 ### 3. ツールのビルドとデプロイ（AHC コンテストごとに1回）
 
 AHC プロジェクトのツール（gen, tester, vis 等）をビルドして S3 にアップロードします：

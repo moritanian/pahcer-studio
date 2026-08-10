@@ -726,7 +726,7 @@ resultsCommand
 
         limited.forEach((exec: TestExecution) => {
           const avgScore = exec.averageScore
-            ? Math.round(exec.averageScore).toLocaleString('en-US')
+            ? exec.averageScore.toLocaleString('en-US', { maximumFractionDigits: 2 })
             : '-';
           const relative =
             exec.averageRelativeScore != null
@@ -801,7 +801,7 @@ resultsCommand
         // Summary
         const time = exec.startTime ? new Date(exec.startTime).toLocaleString() : '-';
         const avgScore = exec.averageScore
-          ? Math.round(exec.averageScore).toLocaleString('en-US')
+          ? exec.averageScore.toLocaleString('en-US', { maximumFractionDigits: 2 })
           : '-';
         const relative =
           exec.averageRelativeScore != null
@@ -849,7 +849,10 @@ resultsCommand
               executionTime: number | null;
               status: string;
             }) => {
-              const score = c.score != null ? Math.round(c.score).toLocaleString('en-US') : '-';
+              const score =
+                c.score != null
+                  ? c.score.toLocaleString('en-US', { maximumFractionDigits: 2 })
+                  : '-';
               const rel = c.relativeScore != null ? `${(c.relativeScore * 100).toFixed(2)}%` : '-';
               const caseTime =
                 c.executionTime != null ? `${Math.round(c.executionTime * 1000)}ms` : '-';
