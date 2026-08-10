@@ -158,7 +158,7 @@ export class LambdaService {
       pahcerConfig.problem?.score_regex || '(?m)^\\s*Score\\s*=\\s*(?P<score>\\d+)\\s*$';
 
     // Detect tool names
-    const toolNames = await this.detectToolNames(workspace);
+    const toolNames = await this.detectToolNames(workspace, testSteps);
 
     // Read and encode binary
     const MAX_BINARY_SIZE = 4.5 * 1024 * 1024; // 4.5MB (base64 → ~6MB payload limit)
@@ -341,15 +341,23 @@ export class LambdaService {
     }
   }
 
-  private async detectToolNames(workspace: Workspace): Promise<string[]> {
+  private async detectToolNames(workspace: Workspace, testSteps: TestStep[]): Promise<string[]> {
     const srcBinDir = path.join(workspace.targetDirectory, 'tools', 'src', 'bin');
+    const requiredToolNames = new Set<string>(['gen']);
+    for (const step of testSteps) {
+      if (step.program !== 'cargo') continue;
+      const binIndex = step.args?.indexOf('--bin') ?? -1;
+      const binName = binIndex >= 0 ? step.args?.[binIndex + 1] : undefined;
+      if (binName) requiredToolNames.add(binName);
+    }
+
     const toolNames: string[] = [];
     try {
       const files = await fs.readdir(srcBinDir);
       for (const file of files) {
-        if (file.endsWith('.rs')) {
-          toolNames.push(file.slice(0, -3));
-        }
+        if (!file.endsWith('.rs')) continue;
+        const name = file.slice(0, -3);
+        if (requiredToolNames.has(name)) toolNames.push(name);
       }
     } catch {
       // No tools directory
