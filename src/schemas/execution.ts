@@ -52,6 +52,7 @@ export const TestExecutionRequestSchema = z.object({
   startSeed: z.number().int().min(0).nullable().default(null),
   settingFile: z.string().nullable().default(null),
   useLambda: z.boolean().nullable().default(null),
+  parallel: z.number().int().min(0).optional(),
 });
 
 /**

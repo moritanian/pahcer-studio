@@ -43,8 +43,8 @@ export class LambdaService {
     return options;
   }
 
-  private getLambdaClient(config: AwsLambdaConfig): LambdaClient {
-    const maxSockets = Math.max(50, config.parallel || 10);
+  private getLambdaClient(config: AwsLambdaConfig, parallel?: number): LambdaClient {
+    const maxSockets = Math.max(50, parallel ?? config.parallel ?? 10);
     const key = `${this.getCacheKey(config)}:${maxSockets}`;
     if (this.cachedLambdaClient?.key === key) {
       return this.cachedLambdaClient.client;
@@ -141,6 +141,7 @@ export class LambdaService {
     seeds: number[],
     onProgress: (results: SeedResult[]) => void,
     abortSignal?: AbortSignal,
+    parallelOverride?: number,
   ): Promise<SeedResult[]> {
     const lambdaConfig = pahcerConfig.aws_lambda;
     if (!lambdaConfig) {
@@ -170,10 +171,10 @@ export class LambdaService {
     const binaryBase64 = binaryData.toString('base64');
 
     // Split seeds into chunks
-    const parallel = lambdaConfig.parallel || 10;
+    const parallel = parallelOverride ?? lambdaConfig.parallel ?? 10;
     const chunks = this.splitSeeds(seeds, parallel);
 
-    const client = this.getLambdaClient(lambdaConfig);
+    const client = this.getLambdaClient(lambdaConfig, parallel);
 
     // Build base payload
     const basePayload: Omit<LambdaInvokePayload, 'seeds'> = {

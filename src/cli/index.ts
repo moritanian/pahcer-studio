@@ -331,6 +331,7 @@ async function runTests(options: {
   settingFile?: string;
   lambda?: boolean;
   local?: boolean;
+  parallel?: number;
 }): Promise<void> {
   const isRunning = await isServerRunning();
 
@@ -396,6 +397,7 @@ async function runTests(options: {
         : path.resolve(targetDir, options.settingFile)
       : null,
     useLambda,
+    parallel: options.parallel,
   };
 
   try {
@@ -551,6 +553,13 @@ program
   .option('-f, --setting-file <path>', 'Path to the setting file')
   .option('--lambda', 'Run on AWS Lambda')
   .option('--local', 'Run locally')
+  .option('-p, --parallel <number>', 'Number of parallel AWS Lambda invocations', (value) => {
+    const parallel = Number(value);
+    if (!Number.isInteger(parallel) || parallel < 0) {
+      throw new Error('--parallel must be a non-negative integer');
+    }
+    return parallel;
+  })
   .action(async (directory, options) => {
     try {
       const { startSeed, testCaseCount } = parseSeedOption(options.seed, options.count);
@@ -564,6 +573,7 @@ program
         settingFile: options.settingFile,
         lambda: options.lambda,
         local: options.local,
+        parallel: options.parallel,
       });
     } catch (error) {
       console.error('Error running tests:', error);

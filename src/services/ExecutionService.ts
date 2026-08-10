@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import * as os from 'os';
 
 import type {
   TestExecution,
@@ -328,7 +329,11 @@ export class ExecutionService extends EventEmitter {
         seeds.push(i);
       }
 
-      const parallel = lambdaConfig.parallel || 10;
+      const configuredParallel = request.parallel ?? lambdaConfig.parallel ?? 10;
+      const parallel =
+        configuredParallel === 0
+          ? Math.max(1, Math.floor(os.cpus().length / 2))
+          : configuredParallel;
 
       // Run compile_steps locally before Lambda invoke
       // aws_lambda.test.compile_steps があれば test.compile_steps を完全に置き換え
@@ -393,6 +398,7 @@ export class ExecutionService extends EventEmitter {
           });
         },
         abortController.signal,
+        parallel,
       );
 
       // Post-processing
