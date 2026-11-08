@@ -16,6 +16,7 @@ import type { IExecutionRepository } from '../repositories/IExecutionRepository'
 import type { IWorkspaceRepository } from '../repositories/IWorkspaceRepository';
 import type { ProcessManager } from '../infrastructure/ProcessManager';
 import { ConfigService } from './ConfigService';
+import type { CaseOutputSpec } from './ConfigService';
 import { ScoreAnalysisService } from './ScoreAnalysisService';
 import { LambdaService } from './LambdaService';
 import { ResultProcessor } from './ResultProcessor';
@@ -37,7 +38,10 @@ export class ExecutionService extends EventEmitter {
    */
   private readonly runningLocalExecutions = new Map<string, string>();
   private readonly executionTempConfigs = new Map<string, string>();
-  private readonly executionOutDirs = new Map<string, string>();
+  private readonly executionOutputSettings = new Map<
+    string,
+    { outDir: string | null; caseOutput: CaseOutputSpec | null }
+  >();
   private readonly lambdaAbortControllers = new Map<string, AbortController>();
 
   /** ワークスペースと実行IDから複合キーを生成 */
@@ -115,10 +119,11 @@ export class ExecutionService extends EventEmitter {
       );
       // 一時ファイルを --setting-file として使うようリクエストを上書き
       request = { ...request, settingFile: tempConfigResult.tempPath };
-      // out_dir が指定されていれば記録
-      if (tempConfigResult.outDir) {
-        this.executionOutDirs.set(this.execKey(workspace.id, executionId), tempConfigResult.outDir);
-      }
+      // out_dir と各 seed の出力先を記録
+      this.executionOutputSettings.set(this.execKey(workspace.id, executionId), {
+        outDir: tempConfigResult.outDir,
+        caseOutput: tempConfigResult.caseOutput,
+      });
       this.emitLog(executionId, 'info', `Temp config created: ${tempConfigResult.tempPath}`);
     }
 
@@ -252,7 +257,7 @@ export class ExecutionService extends EventEmitter {
       await this.configService.cleanupTempConfig(tempPath);
       this.executionTempConfigs.delete(key);
     }
-    this.executionOutDirs.delete(key);
+    this.executionOutputSettings.delete(key);
   }
 
   /**
@@ -267,7 +272,9 @@ export class ExecutionService extends EventEmitter {
       await this.updateExecutionStatus(executionId, 'RUNNING', workspace);
       this.emitLog(executionId, 'info', `pacher test execution started: ${executionId}`);
 
-      const outDir = this.executionOutDirs.get(this.execKey(workspace.id, executionId));
+      const outputSettings = this.executionOutputSettings.get(
+        this.execKey(workspace.id, executionId),
+      );
       const result = await this.processManager.executePacher(
         request,
         workspace,
@@ -276,7 +283,8 @@ export class ExecutionService extends EventEmitter {
           // ログの各行を個別にemitする
           this.logProcessOutput(executionId, log, 'info');
         },
-        outDir,
+        outputSettings?.outDir,
+        outputSettings?.caseOutput,
       );
 
       // 一時設定ファイルを削除

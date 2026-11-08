@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { TestExecutionRequest } from '../schemas/execution';
 import type { Workspace } from '../schemas/workspace';
+import type { CaseOutputSpec } from '../services/ConfigService';
 import { PathHelper } from './PathHelper';
 
 export interface PacherExecutionResult {
@@ -38,6 +39,7 @@ export class ProcessManager {
     executionId: string,
     onLog: (log: string) => void,
     outDir?: string | null,
+    caseOutput?: CaseOutputSpec | null,
   ): Promise<PacherExecutionResult> {
     const startTime = Date.now();
 
@@ -70,6 +72,14 @@ export class ProcessManager {
         await fs.rm(outDir, { recursive: true, force: true });
       } catch {
         // tools/out が存在しない場合は無視
+      }
+
+      // tools/out 以外に出力する設定では古い出力が残るので、今回の seed 分だけ消しておく
+      if (caseOutput) {
+        const outputPaths = await this.resolveCaseOutputPaths(caseOutput, workspace);
+        await Promise.all(
+          [...outputPaths.values()].map((p) => fs.rm(p, { force: true }).catch(() => {})),
+        );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -137,7 +147,7 @@ export class ProcessManager {
 
           if (success) {
             try {
-              await this.saveTestResults(executionId, executionCwd, workspace, outDir);
+              await this.saveTestResults(executionId, executionCwd, workspace, outDir, caseOutput);
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
               console.error(`[${executionId}] Failed to save results: ${message}`);
@@ -241,6 +251,7 @@ export class ProcessManager {
     workingDir: string,
     workspace: Workspace,
     outDir?: string | null,
+    caseOutput?: CaseOutputSpec | null,
   ): Promise<void> {
     const targetDir = workspace.targetDirectory;
 
@@ -282,10 +293,23 @@ export class ProcessManager {
     }
 
     // 2. ケースごとの出力ファイルをコピー
-    const caseOutDir = PathHelper.getOutputDirectory(workingDir);
     const caseOutputsDir = PathHelper.getCaseOutputsDirectory(targetDir, executionId);
+    await fs.mkdir(caseOutputsDir, { recursive: true }).catch(() => {});
+
+    if (caseOutput) {
+      // 設定の test_steps[].stdout から各 seed の出力先を解決してコピーする
+      const outputPaths = await this.resolveCaseOutputPaths(caseOutput, workspace);
+      for (const [seed, srcPath] of outputPaths) {
+        const destPath = path.join(caseOutputsDir, `${String(seed).padStart(4, '0')}.txt`);
+        await fs.copyFile(srcPath, destPath).catch(() => {
+          // 出力が無い seed（実行失敗など）はスキップ
+        });
+      }
+      return;
+    }
+
+    const caseOutDir = PathHelper.getOutputDirectory(workingDir);
     try {
-      await fs.mkdir(caseOutputsDir, { recursive: true });
       const outFiles = await fs.readdir(caseOutDir);
       for (const file of outFiles) {
         if (file.endsWith('.txt')) {
@@ -301,5 +325,37 @@ export class ProcessManager {
     } catch {
       // tools/out not found is normal in some cases
     }
+  }
+
+  /**
+   * stdout テンプレートの {SEED} / {SEED04} を置換し、seed ごとの出力ファイルパスを返す。
+   * pahcer と同じく、相対パスはワークスペース（pahcer の実行ディレクトリ）基準で解決する。
+   */
+  private async resolveCaseOutputPaths(
+    caseOutput: CaseOutputSpec,
+    workspace: Workspace,
+  ): Promise<Map<number, string>> {
+    const { stdoutTemplate, startSeed, endSeed } = caseOutput;
+    const replaceSeed = (s: string, seed: number) =>
+      s.split('{SEED}').join(String(seed)).split('{SEED04}').join(String(seed).padStart(4, '0'));
+
+    // WSL モードでは設定内の絶対パスは Linux パスなので、fs から触れる Windows パスに変換する
+    let toFsPath = (p: string) => path.resolve(workspace.targetDirectory, p);
+    if (workspace.useWsl && stdoutTemplate.startsWith('/')) {
+      const dir = path.posix.dirname(stdoutTemplate);
+      if (dir.includes('{SEED')) {
+        // ディレクトリ名に seed を含む稀なケースは変換できないのでスキップ
+        console.warn(`Unsupported stdout template on WSL: ${stdoutTemplate}`);
+        return new Map();
+      }
+      const windowsDir = await PathHelper.wslToWindows(dir);
+      toFsPath = (p: string) => path.join(windowsDir, path.posix.basename(p));
+    }
+
+    const result = new Map<number, string>();
+    for (let seed = startSeed; seed < endSeed; seed++) {
+      result.set(seed, toFsPath(replaceSeed(stdoutTemplate, seed)));
+    }
+    return result;
   }
 }

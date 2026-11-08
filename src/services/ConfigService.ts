@@ -50,6 +50,17 @@ export interface PahcerConfig {
 }
 
 /**
+ * 各 seed の標準出力ファイルの場所。stdoutTemplate は pahcer の test_steps[].stdout と同じ形式で、
+ * {SEED} / {SEED04} を含み、pahcer の実行ディレクトリ（ワークスペース）からの相対パスか絶対パス。
+ * seed 範囲は [startSeed, endSeed)。
+ */
+export interface CaseOutputSpec {
+  stdoutTemplate: string;
+  startSeed: number;
+  endSeed: number;
+}
+
+/**
  * pahcer_config.tomlの操作を行うサービス
  */
 export class ConfigService {
@@ -129,7 +140,11 @@ export class ConfigService {
     startSeed: number | null,
     workspace: Workspace,
     settingFilePath?: string | null,
-  ): Promise<{ tempPath: string; outDir: string | null } | null> {
+  ): Promise<{
+    tempPath: string;
+    outDir: string | null;
+    caseOutput: CaseOutputSpec | null;
+  } | null> {
     try {
       const sourcePath = settingFilePath || this.getConfigPath(workspace);
 
@@ -160,7 +175,15 @@ export class ConfigService {
       const tomlContent = stringify(updatedConfig);
       await fs.writeFile(tempPath, tomlContent, 'utf-8');
 
-      return { tempPath, outDir: currentConfig.test?.out_dir ?? null };
+      // --setting-file では stdout が tools/out 以外を指すことがあるので、実際の出力先を記録する
+      const stdoutTemplate = currentConfig.test?.test_steps?.find((step) =>
+        step.stdout?.includes('{SEED'),
+      )?.stdout;
+      const caseOutput = stdoutTemplate
+        ? { stdoutTemplate, startSeed: effectiveStartSeed, endSeed: effectiveEndSeed }
+        : null;
+
+      return { tempPath, outDir: currentConfig.test?.out_dir ?? null, caseOutput };
     } catch (error) {
       console.error(`Error creating temp config for test: ${error}`);
       return null;
