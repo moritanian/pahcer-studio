@@ -108,6 +108,9 @@ export class ProcessManager {
         const child = spawn(cmd[0], cmd.slice(1), {
           stdio: ['pipe', 'pipe', 'pipe'],
           cwd: executionCwd,
+          // On POSIX, make the execution the leader of a new process group so
+          // cancellation can also terminate descendants such as a.out.
+          detached: process.platform !== 'win32',
         });
 
         const pKey = this.processKey(workspace.id, executionId);
@@ -210,9 +213,19 @@ export class ProcessManager {
    */
   killProcess(workspaceId: string, executionId: string): boolean {
     const key = this.processKey(workspaceId, executionId);
-    const process = this.activeProcesses.get(key);
-    if (process) {
-      process.kill('SIGKILL');
+    const child = this.activeProcesses.get(key);
+    if (child) {
+      if (process.platform !== 'win32' && child.pid !== undefined) {
+        try {
+          // A negative PID targets the process group created with detached.
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          // The group may already have exited between lookup and cancellation.
+          child.kill('SIGKILL');
+        }
+      } else {
+        child.kill('SIGKILL');
+      }
       this.activeProcesses.delete(key);
       return true;
     }
